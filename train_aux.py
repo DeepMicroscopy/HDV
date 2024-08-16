@@ -94,7 +94,8 @@ def train(hyp, opt, device, tb_writer=None):
     else:
         model = Model(opt.cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     with torch_distributed_zero_first(rank):
-        check_dataset(data_dict)  # check
+        if 'coco' in opt.data:
+            check_dataset(data_dict)  # check
     train_path = data_dict['train']
     test_path = data_dict['val']
 
@@ -252,20 +253,20 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Process 0
     if rank in [-1, 0]:
-        testloader = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader
+        testloader, testdataset = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader
                                        hyp=hyp, cache=opt.cache_images and not opt.notest, rect=True, rank=-1,
                                        world_size=opt.world_size, workers=opt.workers,
-                                       pad=0.5, prefix=colorstr('val: '))[0]
+                                       pad=0.5, prefix=colorstr('val: '))
 
         if not opt.resume:
-            labels = np.concatenate(dataset.labels, 0)
-            c = torch.tensor(labels[:, 0])  # classes
-            # cf = torch.bincount(c.long(), minlength=nc) + 1.  # frequency
-            # model._initialize_biases(cf.to(device))
-            if plots:
-                #plot_labels(labels, names, save_dir, loggers)
-                if tb_writer:
-                    tb_writer.add_histogram('classes', c, 0)
+            # labels = np.concatenate(dataset.labels, 0)
+            # c = torch.tensor(labels[:, 0])  # classes
+            # # cf = torch.bincount(c.long(), minlength=nc) + 1.  # frequency
+            # # model._initialize_biases(cf.to(device))
+            # if plots:
+            #     #plot_labels(labels, names, save_dir, loggers)
+            #     if tb_writer:
+            #         tb_writer.add_histogram('classes', c, 0)
 
             # Anchors
             if not opt.noautoanchor:
@@ -307,6 +308,32 @@ def train(hyp, opt, device, tb_writer=None):
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
 
+
+        if 'midog' in opt.data:
+            # Trainloader
+            dataset.get_new_coords()
+            nw = min([os.cpu_count() // opt.world_size, batch_size if batch_size > 1 else 0, opt.workers])  # number of workers
+            sampler = torch.utils.data.distributed.DistributedSampler(dataset) if rank != -1 else None
+            loader = torch.utils.data.DataLoader 
+            # Use torch.utils.data.DataLoader() if dataset.properties will update during training else InfiniteDataLoader()
+            dataloader = loader(dataset,
+                                batch_size=batch_size,
+                                num_workers=nw,
+                                sampler=sampler,
+                                pin_memory=False,
+                                collate_fn=dataset.collate_fn)
+            
+            
+            # Testloader 
+            testdataset.get_new_coords()
+            testloader = loader(testdataset,
+                                batch_size=batch_size*2,
+                                num_workers=nw,
+                                sampler=sampler,
+                                pin_memory=False,
+                                collate_fn=testdataset.collate_fn)
+            
+
         # Update image weights (optional)
         if opt.image_weights:
             # Generate indices
@@ -335,7 +362,8 @@ def train(hyp, opt, device, tb_writer=None):
         optimizer.zero_grad()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
-            imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
+            # imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
+            imgs = imgs.to(device, non_blocking=True).float()  # uint8 to float32, 0-255 to 0.0-1.0
 
             # Warmup
             if ni <= nw:
@@ -523,6 +551,13 @@ def train(hyp, opt, device, tb_writer=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    # midog specific params
+    parser.add_argument('--img_dir', type=str, default='/data/patho/MIDOG2', help='patho to midog data')
+    parser.add_argument('--dataset', type=str, default='/home/ammeling/projects/Bhattacharyya/annotations/MIDOG2022_training.csv')
+    parser.add_argument('--box_format', type=str, default='cxcy')
+    parser.add_argument('--num_samples', type=int, default=1024)
+
+    # general params 
     parser.add_argument('--weights', type=str, default='yolo7.pt', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/coco.yaml', help='data.yaml path')
