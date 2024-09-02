@@ -329,7 +329,6 @@ class MAPbyDistance(Metric):
 
 
 
-
     def compute(self) -> Dict[str, Tensor]:
         """Computes the metric.
 

@@ -42,27 +42,32 @@ class Yolov7_Inference(Strategy):
     def __init__(
             self, 
             model: nn.Module, 
-            nms_thresh: float=0.3
+            conf_thres: float=0.3,
+            iou_thres_1: float=0.7,
+            iou_thres_2: float=0.3,
+            half_precision: bool = True,
+            augment: bool = False
             ) -> None:
         self.model = model
-        self.nms_thresh = nms_thresh
+        self.conf_thres = conf_thres
+        self.iou_thres_1 = iou_thres_1
+        self.iou_thres_2 = iou_thres_2
+        self.half_precision = half_precision
+        self.augment = augment 
 
     def process_image(
             self, 
             image: Union[str, Path],
-            conf_thres: float = 0.25,
-            iou_thres: float = 0.7,
             batch_size: int = 8,
             patch_size: int = 512,
             overlap: float = 0.3,
             device: str = 'cuda',
             num_workers: int = 4,
             verbose: bool = False,
-            wsi: bool = False,
-            half_precision: bool = True
+            wsi: bool = False
             ) -> Dict[str, np.ndarray]:       
 
-        half = device != 'cpu' and half_precision
+        half = device != 'cpu' and self.half_precision
         if half:
             self.model.half()     
         
@@ -93,10 +98,10 @@ class Yolov7_Inference(Strategy):
 
                 # run model forward pass 
                 batch_images = batch_images.half() if half else batch_images
-                preds, _ = self.model(batch_images.to(device)) 
+                preds, _ = self.model(batch_images.to(device), augment=self.augment) 
 
                 # apply nms patch-wise 
-                preds = non_max_suppression(preds, conf_thres=conf_thres, iou_thres=iou_thres, labels=None, multi_label=True)
+                preds = non_max_suppression(preds, conf_thres=self.conf_thres, iou_thres=self.iou_thres_1, labels=None, multi_label=True)
 
                 # extract results
                 boxes = [p[:, :4].cpu() for p in preds]
@@ -119,7 +124,7 @@ class Yolov7_Inference(Strategy):
             scores= torch.cat(res['scores'], dim=0)
             labels = torch.cat(res['labels'], dim=0)
             # final nms
-            to_keep = torch_nms(boxes, scores, self.nms_thresh)
+            to_keep = torch_nms(boxes, scores, self.iou_thres_2)
             boxes = boxes[to_keep].numpy()
             scores = scores[to_keep].numpy()
             labels = labels[to_keep].numpy()
@@ -227,6 +232,6 @@ class ImageProcessor:
     def get_number_of_patches(self) -> int:
         pass
 
-    def process_image(self, image: str, **kwargs) -> Dict[str, np.ndarray]:
-        return self._strategy.process_image(image=image, **self.settings, **kwargs)
+    def process_image(self, image: str) -> Dict[str, np.ndarray]:
+        return self._strategy.process_image(image=image, **self.settings)
     

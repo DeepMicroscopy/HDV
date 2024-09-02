@@ -36,8 +36,10 @@ data/images/*
 !data/*.sh
 
 00_*.ipynb
-
+results/
 results*.csv
+annotations/
+optimized_models/
 
 # Datasets -------------------------------------------------------------------------------------------------------------
 coco/

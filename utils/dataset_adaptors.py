@@ -348,7 +348,7 @@ class MidogDatasetAdaptor(Dataset):
             # filter mitotic figures
             annos = sl.load_labels(label=0)
 
-            if annos.shape[0] == 0:
+            if not annos.any():
                 # no annotations available -> random patch
                 x = randint(patch_width / 2, slide_width-patch_width / 2)
                 y = randint(patch_height / 2, slide_height-patch_height / 2)
@@ -363,7 +363,7 @@ class MidogDatasetAdaptor(Dataset):
             # sample imposter
             annos = sl.load_labels(label=1)
 
-            if annos.shape[0] == 0:
+            if not annos.any():
                 # no annotations available -> random patch
                 x = randint(patch_width / 2, slide_width-patch_width / 2)
                 y = randint(patch_height / 2, slide_height-patch_height / 2)
@@ -375,7 +375,7 @@ class MidogDatasetAdaptor(Dataset):
                 y = (ymin + ymax) / 2
 
         # set offsets
-        offset_scale = 0.5
+        offset_scale = 0.45
         xoffset = randint(-patch_width, patch_width) * offset_scale
         yoffset = randint(-patch_height, patch_height) * offset_scale
 
@@ -518,6 +518,8 @@ def create_midog_dataloader(
         dataset_file_path: str, 
         patch_size: int = 1280,
         num_samples: int = 1024,
+        fg_prob: float = 0.5,
+        arb_prob: float = 0.25,
         sampling_strategy: str = 'domain_based',
         workers: int = 8,
         world_size: int = 1,
@@ -537,6 +539,8 @@ def create_midog_dataloader(
                 dataset=train_df, 
                 num_samples=num_samples, 
                 patch_size=patch_size,
+                fg_prob=fg_prob,
+                arb_prob=arb_prob,
                 sampling_strategy=sampling_strategy,
                 transforms=create_midog_transforms()
             )
@@ -547,6 +551,8 @@ def create_midog_dataloader(
                 dataset=valid_df, 
                 num_samples=num_samples, 
                 patch_size=patch_size,
+                fg_prob=fg_prob,
+                arb_prob=arb_prob,
                 sampling_strategy=sampling_strategy,
             )
         else:

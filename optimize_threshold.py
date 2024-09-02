@@ -1,0 +1,192 @@
+import argparse
+import os
+import pandas as pd
+import numpy as np
+import pprint
+
+from tqdm import tqdm 
+
+from utils.factory import ConfigCreator, ModelFactory
+from utils.inference import Yolov7_Inference, ImageProcessor
+from utils.evaluation import optimize_threshold
+
+
+# set default parameters
+BATCH_SIZE = 8
+CONFIG_FILE = None
+CONFIG_PATH = 'optimized_models/'
+DATASET_FILE = 'annotations/MIDOG2022_training.csv'
+DETECTOR = 'Yolov7'
+DET_THRESH = 0.05
+DEVICE = 'cuda:0'
+IMG_DIR = '/data/patho/MIDOG2/'
+IOU_THRESH_1 = 0.7
+IOU_THRESH_2 = 0.3
+MIN_THRESH = 0.2
+MODEL_NAME = 'FCOS50_HNSCC'
+NUM_CLASSES = 1
+NUM_DOMAINS = None
+NUM_WORKERS = 8
+OVERLAP = 0.3
+PATCH_SIZE = 1280
+TUMOR_ID = None
+VERBOSE = False
+WEIGHTS = '/home/ammeling/projects/Bhattacharyya/lymph/checkpoints/LitFCOS_all_ada_0_epoch78_val_ap_0.84.ckpt'
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--batch_size",     type=int, default=BATCH_SIZE, help="Batch size.")
+    parser.add_argument("--cfg",            type=str, help="Model configuration.")
+    parser.add_argument("--config_file",    type=str, default=CONFIG_FILE, help="Existing config file.")
+    parser.add_argument("--config_path",    type=str, default=CONFIG_PATH, help="Path to model configs.")
+    parser.add_argument("--dataset_file",   type=str, default=DATASET_FILE, help="Dataset filepath.")
+    parser.add_argument("--det_thres",      type=float, default=DET_THRESH, help="Detection threshold.")
+    parser.add_argument("--detector",       type=str, default=DETECTOR, help="Model architectore.")
+    parser.add_argument("--device",     	type=str, default=DEVICE, help="Device.")
+    parser.add_argument("--img_dir",        type=str, default=IMG_DIR, help="Image directory.")
+    parser.add_argument("--iou_thres_1",    type=float, default=IOU_THRESH_1, help="IOU threshold for patch-wise evaluation.")
+    parser.add_argument("--iou_thres_2",    type=float, default=IOU_THRESH_2, help="IOU threshold for final evaluation.")
+    parser.add_argument("--min_thresh",     type=float, default=MIN_THRESH, help="Minimum detection threshold.")
+    parser.add_argument("--model_name",     type=str, default=MODEL_NAME, help="Model name to save config file.")
+    parser.add_argument("--num_classes",    type=int, default=NUM_CLASSES, help="Number of classes.")
+    parser.add_argument("--num_domains",    type=int, default=NUM_DOMAINS, help="Number of domains for DA models.")
+    parser.add_argument("--num_workers",    type=int, default=NUM_WORKERS, help="Number of processes.")
+    parser.add_argument("--overlap",        type=float, default=OVERLAP, help="Overlap between patches.")
+    parser.add_argument("--patch_size",     type=int, default=PATCH_SIZE, help="Patch size.")
+    parser.add_argument("--tumor_id",       type=str, default=TUMOR_ID, help="Which tumor type to use for optimizing threshold.")
+    parser.add_argument("--verbose",        action="store_true", help="If True, prints pbar for each image.")
+    parser.add_argument("--weights",        type=str, default=WEIGHTS, help="Path to model checkpoint.")
+    return parser.parse_args()
+
+
+def main(args):
+
+    if args.config_file is None:
+
+        # get model configs
+        settings = {
+            'model_name': args.model_name,
+            'detector': args.detector,
+            'cfg': args.cfg,
+            'weights': args.weights,
+            'det_thresh': args.det_thres,
+            'num_classes': args.num_classes
+        }
+
+
+        print('Initializing model ...', end=' ')
+        # create model config
+        config_file = ConfigCreator.create(settings)
+
+    else:
+        print('Initializing model ...', end=' ')
+        config_file = ConfigCreator.load(args.config_file)
+
+    # load model 
+    model = ModelFactory.load(config_file)
+    print('Done.')
+
+
+    print('Loaded model configurations:')
+    pprint.pprint(config_file)
+    print()
+
+    # set up inference strategy
+    strategy = Yolov7_Inference(
+        model=model, 
+        conf_thres=args.det_thres,
+        iou_thres_1=args.iou_thres_1,
+        iou_thres_2=args.iou_thres_2
+        )
+
+    # set up image processor
+    settings = {
+        'batch_size': args.batch_size,
+        'patch_size': args.patch_size,
+        'overlap': args.overlap,
+        'device': args.device,
+        'num_workers': args.num_workers,
+        'verbose': args.verbose
+    }
+
+    # create processor
+    processor = ImageProcessor(strategy=strategy, **settings)
+    print('Loaded inference configurations:')
+    pprint.pprint(settings)
+    print()
+
+    print('Initializing data ...', end=' ')
+    # load data 
+    dataset = pd.read_csv(args.dataset_file)
+
+    # filter validation samples 
+    valid_dataset = dataset.query('split == "val"')
+
+    # filter specific tumor types
+    if args.tumor_id is not None:
+        if 'midog' in args.dataset_file.lower():
+            valid_dataset = valid_dataset.query('tumortype == @args.tumor_id')
+        else:
+            valid_dataset = valid_dataset.query('tumor_id == @args.tumor_id')
+    print('Done.')
+
+
+    # collect filenames
+    filenames = valid_dataset.filename.unique()
+
+    # init preds
+    preds = {}
+
+    # loop over files
+    for file in tqdm(filenames, desc='Collecting predictions'):
+        
+        # get image file location
+        image = os.path.join(args.img_dir, file)
+
+        # compute predictions
+        res = processor.process_image(image)
+
+        # extract results
+        boxes = res['boxes']
+        scores = res['scores']
+
+        if boxes.shape[0] > 0:
+            preds[file] = {'boxes': boxes, 'scores': scores}
+        else:
+            continue 
+
+    # optimize threshold
+    valid_dataset = valid_dataset.query('label == 1')
+
+    # optimize threshold
+    bestThres, bestF1, allF1, allThres = optimize_threshold(
+        dataset=valid_dataset,
+        preds=preds,
+        minthres=args.min_thresh
+    )
+
+    # reduce threshold to be more sensitive on ood data
+    propThres = np.round(bestThres - bestThres * 0.1, decimals=3)
+    propF1 = allF1[np.where(allThres == propThres)].item()
+
+    print(f'Proposed threshold: F1={propF1:.4f}, Threshold={propThres:.2f}')
+
+    print('Updating model configs with optimized threshold ...', end=' ')
+    # updating model configs
+    config_file.update({'det_thresh': float(np.round(propThres, decimals=3))})
+
+    if args.config_file is None:
+        # save model configs
+        save_path = os.path.join(args.config_path, args.model_name + '.yaml')
+        config_file.save(save_path)
+    else:
+        config_file.save(args.config_file)
+        print('Done.')
+
+
+
+if __name__ == "__main__":
+    args = get_args()
+    main(args)
+    print('End of script.')

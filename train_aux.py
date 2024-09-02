@@ -18,6 +18,7 @@ import torch.utils.data
 import yaml
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.utils import clip_grad_norm_
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -254,6 +255,8 @@ def train(hyp, opt, device, tb_writer=None):
             patch_size=imgsz,
             num_samples=opt.num_samples,
             sampling_strategy=opt.sampling_strategy,
+            fg_prob=opt.fg_prob,
+            arb_prob=opt.arb_prob,
             workers=opt.workers,
             world_size=opt.world_size,
             rank=rank
@@ -281,6 +284,8 @@ def train(hyp, opt, device, tb_writer=None):
                 patch_size=imgsz,
                 num_samples=opt.num_samples,
                 sampling_strategy=opt.sampling_strategy,
+                fg_prob=opt.fg_prob,
+                arb_prob=opt.arb_prob,
                 workers=opt.workers,
                 world_size=opt.world_size,
                 rank=-1
@@ -431,6 +436,11 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Optimize
             if ni % accumulate == 0:
+                if opt.gradient_clip_norm is not None:
+                    # unscale gradients 
+                    scaler.unscale_(optimizer)
+                    # clip gradients
+                    clip_grad_norm_(model.parameters(), opt.gradient_clip_norm)
                 scaler.step(optimizer)  # optimizer.step
                 scaler.update()
                 optimizer.zero_grad()
@@ -586,10 +596,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # midog specific params
     parser.add_argument('--img_dir', type=str, default='/data/patho/MIDOG2', help='patho to midog data')
-    parser.add_argument('--dataset', type=str, default='/home/jonas/projects/yolov7/annotations/MIDOG2022_training.csv')
+    parser.add_argument('--dataset', type=str, default='annotations/MIDOG2022_training.csv')
     parser.add_argument('--box_format', type=str, default='cxcy')
     parser.add_argument('--num_samples', type=int, default=1024)
     parser.add_argument('--sampling_strategy', type=str, default='domain_based', help='Sampling strategy.')
+    parser.add_argument('--gradient_clip_norm', type=int, default=None, help='clip the gradient norm')
+    parser.add_argument('--fg_prob', type=float, default=0.5, help='mitotic figure probability')
+    parser.add_argument('--arb_prob', type=float, default=0.25, help='arbitrary probability')
 
     # general params 
     parser.add_argument('--weights', type=str, default='yolo7.pt', help='initial weights path')

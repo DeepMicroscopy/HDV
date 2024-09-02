@@ -831,11 +831,11 @@ if __name__ == '__main__':
         img = torch.rand(1, 3, 640, 640).to(device)
         y = model(img, profile=True)
 
-    # Profile
+    # # Profile
     # img = torch.rand(8 if torch.cuda.is_available() else 1, 3, 640, 640).to(device)
     # y = model(img, profile=True)
 
-    # Tensorboard
+    # # Tensorboard
     # from torch.utils.tensorboard import SummaryWriter
     # tb_writer = SummaryWriter()
     # print("Run 'tensorboard --logdir=models/runs' to view tensorboard at http://localhost:6006/")

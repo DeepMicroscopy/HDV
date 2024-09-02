@@ -104,7 +104,7 @@ def _F1_core_v2(
     det_thresh: float, 
     pred_labels: np.ndarray = None,
     radius: int = 25) -> Dict[int, Tuple[float, int, int, int]]:
-    """Computes F1 score for a given set of annotations and detections.
+    """Computes F1 score for given multi-class dataset.
 
     Args:
         annos (np.ndarray): array of center coordinates in the format [x,y].
@@ -164,7 +164,7 @@ def optimize_threshold(
     MIN_THR = minthres
 
     TPd, FPd, FNd, F1d = dict(), dict(), dict(), dict()
-    thresholds = np.arange(MIN_THR,0.99,0.001)
+    thresholds = np.round(np.arange(MIN_THR,0.99,0.001), decimals=3)
 
     print('Optimizing threshold for validation set of %d files: '%len(preds.keys()), ','.join(list(preds.keys())))
 
