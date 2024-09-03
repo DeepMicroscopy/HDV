@@ -630,10 +630,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # midog specific params
     parser.add_argument('--img_dir', type=str, default='/data/patho/MIDOG2', help='patho to midog data')
-    parser.add_argument('--dataset', type=str, default='/home/ammeling/projects/Bhattacharyya/annotations/MIDOG2022_training.csv')
+    parser.add_argument('--dataset', type=str, default='annotations/MIDOG2022_training.csv')
     parser.add_argument('--box_format', type=str, default='cxcy')
     parser.add_argument('--num_samples', type=int, default=1024)
+    parser.add_argument('--sampling_strategy', type=str, default='domain_based', help='Sampling strategy.')
     parser.add_argument('--gradient_clip_norm', type=int, default=None, help='clip the gradient norm')
+    parser.add_argument('--fg_prob', type=float, default=0.5, help='mitotic figure probability')
+    parser.add_argument('--arb_prob', type=float, default=0.25, help='arbitrary probability')
+
 
     # general params
     parser.add_argument('--weights', type=str, default='yolo7.pt', help='initial weights path')
