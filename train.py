@@ -18,6 +18,7 @@ import torch.utils.data
 import yaml
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.utils import clip_grad_norm_
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -35,6 +36,8 @@ from utils.loss import ComputeLoss, ComputeLossOTA
 from utils.plots import plot_images, plot_labels, plot_results, plot_evolution
 from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_distributed_zero_first, is_parallel
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
+
+from utils.dataset_adaptors import create_midog_dataloader, create_astma_dataloader
 
 logger = logging.getLogger(__name__)
 
@@ -243,22 +246,86 @@ def train(hyp, opt, device, tb_writer=None):
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
         logger.info('Using SyncBatchNorm()')
 
-    # Trainloader
-    dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt,
-                                            hyp=hyp, augment=True, cache=opt.cache_images, rect=opt.rect, rank=rank,
-                                            world_size=opt.world_size, workers=opt.workers,
-                                            image_weights=opt.image_weights, quad=opt.quad, prefix=colorstr('train: '))
+    if 'midog' in opt.data:
+        # create midog train loader and dataset 
+        dataloader, dataset = create_midog_dataloader(
+            split=train_path, 
+            batch_size=batch_size,
+            img_dir_path=opt.img_dir,
+            dataset_file_path=opt.dataset, 
+            patch_size=imgsz,
+            num_samples=opt.num_samples,
+            sampling_strategy=opt.sampling_strategy,
+            fg_prob=opt.fg_prob,
+            arb_prob=opt.arb_prob,
+            workers=opt.workers,
+            world_size=opt.world_size,
+            rank=rank
+            )
+        
+    elif 'astma' in opt.data:
+
+        dataloader, dataset = create_astma_dataloader(
+            split=train_path,
+            batch_size=batch_size,
+            img_dir_path=opt.img_dir,
+            dataset_file_path=opt.dataset,
+            patch_size=imgsz,
+            num_samples=opt.num_samples,
+            workers=opt.workers,
+            world_size=opt.world_size,
+            rank=rank
+        )
+
+    else:
+        # Trainloader
+        dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt,
+                                                hyp=hyp, augment=True, cache=opt.cache_images, rect=opt.rect, rank=rank,
+                                                world_size=opt.world_size, workers=opt.workers,
+                                                image_weights=opt.image_weights, quad=opt.quad, prefix=colorstr('train: '))
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
     nb = len(dataloader)  # number of batches
     assert mlc < nc, 'Label class %g exceeds nc=%g in %s. Possible class labels are 0-%g' % (mlc, nc, opt.data, nc - 1)
 
+
     # Process 0
     if rank in [-1, 0]:
-        testloader, testdataset = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader
-                                       hyp=hyp, cache=opt.cache_images and not opt.notest, rect=True, rank=-1,
-                                       world_size=opt.world_size, workers=opt.workers,
-                                       pad=0.5, prefix=colorstr('val: '))
+        
+        if 'midog' in opt.data:
+            # create midog train loader and dataset 
+            testloader, testdataset = create_midog_dataloader(
+                split=test_path, 
+                batch_size=batch_size * 2,
+                img_dir_path=opt.img_dir,
+                dataset_file_path=opt.dataset, 
+                patch_size=imgsz,
+                num_samples=opt.num_samples,
+                sampling_strategy=opt.sampling_strategy,
+                fg_prob=opt.fg_prob,
+                arb_prob=opt.arb_prob,
+                workers=opt.workers,
+                world_size=opt.world_size,
+                rank=rank
+                )
+        
+        elif 'astma' in opt.data:
 
+            testloader, testdataset = create_astma_dataloader(
+                split=test_path,
+                batch_size=batch_size * 2,
+                img_dir_path=opt.img_dir,
+                dataset_file_path=opt.dataset,
+                patch_size=imgsz,
+                num_samples=opt.num_samples,
+                workers=opt.workers,
+                world_size=opt.world_size,
+                rank=rank
+            )
+        else:
+            testloader, testdataset = create_dataloader(test_path, imgsz_test, batch_size * 2, gs, opt,  # testloader
+                                        hyp=hyp, cache=opt.cache_images and not opt.notest, rect=True, rank=-1,
+                                        world_size=opt.world_size, workers=opt.workers,
+                                        pad=0.5, prefix=colorstr('val: '))
         if not opt.resume:
             # labels = np.concatenate(dataset.labels, 0)
             # c = torch.tensor(labels[:, 0])  # classes
@@ -309,9 +376,9 @@ def train(hyp, opt, device, tb_writer=None):
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
 
-        if 'midog' in opt.data:
+        if 'midog' in opt.data or 'astma' in opt.data:
             # Trainloader
-            dataset.get_new_coords()
+            dataset.create_new_samples()
             nw = min([os.cpu_count() // opt.world_size, batch_size if batch_size > 1 else 0, opt.workers])  # number of workers
             sampler = torch.utils.data.distributed.DistributedSampler(dataset) if rank != -1 else None
             loader = torch.utils.data.DataLoader 
@@ -321,17 +388,17 @@ def train(hyp, opt, device, tb_writer=None):
                                 num_workers=nw,
                                 sampler=sampler,
                                 pin_memory=False,
-                                collate_fn=dataset.collate_fn)
+                                collate_fn=dataset.yolov7_collate_fn)
             
             
             # Testloader 
-            testdataset.get_new_coords()
+            testdataset.create_new_samples()
             testloader = loader(testdataset,
                                 batch_size=batch_size*2,
                                 num_workers=nw,
                                 sampler=sampler,
                                 pin_memory=False,
-                                collate_fn=testdataset.collate_fn)
+                                collate_fn=testdataset.yolov7_collate_fn)
 
             
             
@@ -400,8 +467,14 @@ def train(hyp, opt, device, tb_writer=None):
             # Backward
             scaler.scale(loss).backward()
 
+
             # Optimize
             if ni % accumulate == 0:
+                if opt.gradient_clip_norm is not None:
+                    # unscale gradients 
+                    scaler.unscale_(optimizer)
+                    # clip gradients
+                    clip_grad_norm_(model.parameters(), opt.gradient_clip_norm)
                 scaler.step(optimizer)  # optimizer.step
                 scaler.update()
                 optimizer.zero_grad()
@@ -560,6 +633,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='/home/ammeling/projects/Bhattacharyya/annotations/MIDOG2022_training.csv')
     parser.add_argument('--box_format', type=str, default='cxcy')
     parser.add_argument('--num_samples', type=int, default=1024)
+    parser.add_argument('--gradient_clip_norm', type=int, default=None, help='clip the gradient norm')
 
     # general params
     parser.add_argument('--weights', type=str, default='yolo7.pt', help='initial weights path')

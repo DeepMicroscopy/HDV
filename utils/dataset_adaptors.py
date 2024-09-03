@@ -27,53 +27,9 @@ Coords = Tuple[int, int]
 
 
 
-def create_midog_transforms() -> Callable:
-        return A.Compose([
-            A.Flip(p=0.5),
-            A.ColorJitter(brightness=(0.9, 1.1), contrast=(0.9, 1.1), saturation=(0.9, 1.1), hue=(-0.1, 0.1), p=0.5),
-            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=0, p=0.1),
-            A.RandomRotate90(p=0.5),
-        ], bbox_params=A.BboxParams(format='pascal_voc', min_visibility=0.3, label_fields=['labels'])
-    )
-
-
-def load_midog_df(annotations_file_path: str, box_size: int=50) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df = pd.read_csv(annotations_file_path)
-
-    # make midog annotations zero-indexed for YOLOv7
-    df['label'] = df['label'] - 1
-
-    # convert annotations from x, y to xmin, ymin, xmax, ymax
-    df['xmin'] = df['x'] - box_size * 0.5
-    df['xmax'] = df['x'] + box_size * 0.5
-    df['ymin'] = df['y'] - box_size * 0.5
-    df['ymax'] = df['y'] + box_size * 0.5
-
-    # add class names
-    df['class_name'] = 'imposter'
-    df.loc[df['label'] == 0, 'class_name'] = 'mitotic figure'
-
-    # create lookups
-    class_id_to_label = dict(enumerate(df.class_name.unique()))
-    class_label_to_id = {v: k for k, v in class_id_to_label.items()}
-    domain_id_to_label = dict(enumerate(df.tumortype.unique()))
-    domain_label_to_id = {v: k for k, v in domain_id_to_label.items()}
-
-    # add domain ids
-    df['tumortype'] = df.tumortype.map(domain_label_to_id)
-
-    # create splits 
-    train_df = df.query('split == "train"')
-    valid_df = df.query('split == "val"')
-
-    lookups = {
-        'class_id_to_label': class_id_to_label,
-        'class_label_to_id': class_label_to_id,
-        'domain_id_to_label': domain_id_to_label,
-        'domain_label_to_id': domain_label_to_id
-    }
-
-    return train_df, valid_df, lookups
+# ---------------------------------------------------------------------------------------------------------------------------
+# Generic slide object  ----------------------------------------------------------------------------------------------------- 
+# ---------------------------------------------------------------------------------------------------------------------------
 
 
 
@@ -151,6 +107,61 @@ class SlideObject:
 
 
             return patch_labels
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# MIDOG dataset adaptor ----------------------------------------------------------------------------------------------------- 
+# ---------------------------------------------------------------------------------------------------------------------------
+
+
+def create_midog_transforms() -> Callable:
+        return A.Compose([
+            A.Flip(p=0.5),
+            A.ColorJitter(brightness=(0.9, 1.1), contrast=(0.9, 1.1), saturation=(0.9, 1.1), hue=(-0.1, 0.1), p=0.5),
+            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=0, p=0.1),
+            A.RandomRotate90(p=0.5),
+        ], bbox_params=A.BboxParams(format='pascal_voc', min_visibility=0.3, label_fields=['labels'])
+    )
+
+
+def load_midog_df(annotations_file_path: str, box_size: int=50) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    df = pd.read_csv(annotations_file_path)
+
+    # make midog annotations zero-indexed for YOLOv7
+    df['label'] = df['label'] - 1
+
+    # convert annotations from x, y to xmin, ymin, xmax, ymax
+    df['xmin'] = df['x'] - box_size * 0.5
+    df['xmax'] = df['x'] + box_size * 0.5
+    df['ymin'] = df['y'] - box_size * 0.5
+    df['ymax'] = df['y'] + box_size * 0.5
+
+    # add class names
+    df['class_name'] = 'imposter'
+    df.loc[df['label'] == 0, 'class_name'] = 'mitotic figure'
+
+    # create lookups
+    class_id_to_label = dict(enumerate(df.class_name.unique()))
+    class_label_to_id = {v: k for k, v in class_id_to_label.items()}
+    domain_id_to_label = dict(enumerate(df.tumortype.unique()))
+    domain_label_to_id = {v: k for k, v in domain_id_to_label.items()}
+
+    # add domain ids
+    df['tumortype'] = df.tumortype.map(domain_label_to_id)
+
+    # create splits 
+    train_df = df.query('split == "train"')
+    valid_df = df.query('split == "val"')
+
+    lookups = {
+        'class_id_to_label': class_id_to_label,
+        'class_label_to_id': class_label_to_id,
+        'domain_id_to_label': domain_id_to_label,
+        'domain_label_to_id': domain_label_to_id
+    }
+
+    return train_df, valid_df, lookups
 
 
 
@@ -397,6 +408,12 @@ class MidogDatasetAdaptor(Dataset):
         return {'file': slide_id, 'coords': (x, y)}
     
 
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Generic Yolov7 dataset ----------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------------
+
+
 def convert_xyxy_to_cxcywh(bboxes):
     bboxes = bboxes.copy()
     bboxes[:, 2] = bboxes[:, 2] - bboxes[:, 0]
@@ -404,7 +421,6 @@ def convert_xyxy_to_cxcywh(bboxes):
     bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] * 0.5
     bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] * 0.5
     return bboxes
-
 
 
 class Yolov7Dataset(Dataset):
@@ -435,7 +451,8 @@ class Yolov7Dataset(Dataset):
         labels = self.ds.labels
         for label in labels:
             if label.any():
-                label[:, 1:] = convert_xyxy_to_cxcywh(label[:, 1:])
+                label = label.astype(float)
+                label[:, 1:] = convert_xyxy_to_cxcywh(label[:, 1:].astype(float))
                 label[:, 1:] /= self.patch_size  # normalized coords
         return labels
 
@@ -508,7 +525,13 @@ class Yolov7Dataset(Dataset):
             files,
             shapes,
         )
-    
+
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Dataloader functions ------------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------------
 
 
 def create_midog_dataloader(
@@ -573,3 +596,279 @@ def create_midog_dataloader(
                         collate_fn=dataset.yolov7_collate_fn)
     
     return dataloader, dataset 
+
+
+
+def create_astma_dataloader(
+        split: str,
+        batch_size: int, 
+        img_dir_path: str, 
+        dataset_file_path: str, 
+        patch_size: int = 1280,
+        num_samples: int = 1024,
+        workers: int = 8,
+        world_size: int = 1,
+        rank: int = -1       
+):
+    
+    with torch_distributed_zero_first(rank):
+        
+        # load data
+        train_df, _, _ = load_astma_df(dataset_file_path)
+
+        # create midog adaptors
+        if split == 'train':
+            dataset = AstmaDatasetAdaptor(
+                split='train',
+                img_dir_path=img_dir_path, 
+                dataset=train_df, 
+                num_samples=num_samples, 
+                patch_size=patch_size,
+                transforms=create_midog_transforms()
+            )
+        elif split == 'val':
+            dataset = AstmaDatasetAdaptor(
+                split='val',
+                img_dir_path=img_dir_path, 
+                dataset=train_df, 
+                num_samples=num_samples, 
+                patch_size=patch_size,
+            )
+        else:
+            raise ValueError(f'Unrecognized split: {split}.')
+
+        # create yolo datasets
+        dataset = Yolov7Dataset(dataset, patch_size=patch_size)   
+
+    # create dataloader 
+    batch_size = min(batch_size, len(dataset))
+    nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
+    sampler = DistributedSampler(dataset) if rank != -1 else None
+    dataloader = DataLoader(dataset,
+                        batch_size=batch_size,
+                        num_workers=nw,
+                        sampler=sampler,
+                        pin_memory=False,  # was true
+                        collate_fn=dataset.yolov7_collate_fn)
+    
+    return dataloader, dataset 
+    
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# Astma dataset adaptor -----------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------------
+
+
+def load_astma_df(annotations_file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    df = pd.read_csv(annotations_file_path)
+
+    # drop unused labels
+    df = df.drop(df.query('label in ["Schrott", "Weitere"]').index)
+
+    # add class id and class name
+    class_label_to_id = {label: label_id for label_id, label in enumerate(df.label.unique())}
+    class_id_to_label = {label_id: label for label, label_id in class_label_to_id.items()}
+
+    # rename columns
+    df['label'] = df.label.map(class_label_to_id)
+    df['class_names'] = df.label.map(class_id_to_label)
+    df = df.rename({'x1': 'xmin', 'y1': 'ymin', 'x2': 'xmax', 'y2': 'ymax'}, axis=1)
+
+    # we select only the fully annotated slides for now
+    train_slide = 'BAL Promyk Spray 4.svs'
+    test_slide = 'BAL AIA Blickfang Luft.svs'
+
+    # create splits
+    train_df = df.query('filename == @train_slide')
+    test_df = df.query('filename == @test_slide')
+
+    lookups = {
+        'class_id_to_label': class_id_to_label,
+        'class_label_to_id': class_label_to_id
+    }
+
+    return train_df, test_df, lookups
+
+
+class AstmaDatasetAdaptor(Dataset):
+    def __init__(
+            self,
+            img_dir_path: str, 
+            dataset: pd.DataFrame,
+            num_samples: int = 1024,
+            patch_size: int = 640,
+            filename_col: str = 'filename',
+            label_col: str = 'label',
+            split: str = None,
+            level: int = 0,
+            transforms: Callable = None
+    ):
+        self.img_dir_path = Path(img_dir_path)
+        self.dataset = dataset
+        self.num_samples = num_samples
+        self.patch_size = patch_size
+        self.filename_col = filename_col
+        self.label_col = label_col
+        self.level = level
+        self.transforms = transforms
+        self.split = split 
+
+        self.filenames = self.dataset[self.filename_col].unique()
+
+        # select columns for slide objects
+        columns = [self.label_col, 'xmin', 'ymin', 'xmax', 'ymax']
+
+        # create slide objects
+        slide_objects = dict()
+        for idx, filename in enumerate(tqdm(self.filenames, desc='Initializing slides')):
+            slide_path = self.img_dir_path / filename
+            annotations = self.dataset[self.dataset[self.filename_col] == filename]
+            slide_objects[idx] = SlideObject(
+                slide_path=slide_path,
+                annotations=annotations[columns],
+                size=self.patch_size,
+                level=self.level,
+                )
+        
+        # store slide objects
+        self.slide_objects = slide_objects
+        self.classes = self.dataset[self.label_col].unique().tolist()
+
+        # create initial training samples 
+        self.create_samples()
+
+
+    @property
+    def labels(self):
+        return [s.load_labels() for s in self.slide_objects.values()]  # collect all labels 
+
+
+    def __len__(self) -> int:
+        return len(self.samples)
+    
+    
+    def create_samples(self) -> None:
+        """Method to create training samples for one pseudo epoch."""
+
+        # get slide ids 
+        slide_ids = self._sample_with_equal_probability()
+
+        # get training samples 
+        samples = dict()
+        for sample_id, slide_id in enumerate(slide_ids):
+            samples[sample_id] = self.sample_coords(slide_id)
+
+        # store samples 
+        self.samples = samples 
+
+
+    def create_new_samples(self) -> None:
+        """Wrapper method to create new samples during training."""
+        self.create_samples()
+        if self.split is not None:
+            print(f'Created new {self.split} samples!')
+        else:
+            print(f'Created new samples!')
+
+
+    def _sample_with_equal_probability(self) -> np.ndarray:
+        """Sampling strategy that samples with equal probability from all slides."""
+        slide_ids = choice(list(self.slide_objects.keys()), size=self.num_samples, replace=True)
+        return slide_ids
+
+    
+    def sample_coords(self, slide_id: int) -> Dict[int, Coords]:
+        """Method to sample patch coordinates from a slide."""
+        
+        # get slide object
+        sl = self.slide_objects[slide_id]
+
+        # get dims
+        slide_width, slide_height = sl.slide_size
+        patch_width, patch_height = sl.patch_size
+
+        # we use the upper half of the image for training and the lower half for evaluation
+        border = slide_height // 2
+        
+        # we sample patches randomly as the density of cells is quite high
+        x = randint(patch_width / 2, slide_width-patch_width / 2)
+
+        # sample from upper half
+        if self.split == 'train':
+            y = randint(patch_height / 2, border - patch_height / 2)
+        # sample from lower half 
+        elif self.split == 'val':
+            y = randint(border + patch_height / 2, slide_height - patch_height / 2)
+        # sample from complete image 
+        else: 
+            y = randint(patch_height / 2, slide_height - patch_height / 2)
+
+        # set offsets
+        offset_scale = 0.5
+        xoffset = randint(-patch_width, patch_width) * offset_scale
+        yoffset = randint(-patch_height, patch_height) * offset_scale
+
+        # shift coordinates and return top left corner
+        x = int(x - patch_width / 2 + xoffset) 
+        y = int(y - patch_height / 2 + yoffset)
+
+        # avoid black borders
+        if x + patch_width > slide_width:
+            x = slide_width - patch_width
+        elif x < 0:
+            x = 0
+        
+        if y + patch_height > slide_height:
+            y = slide_height - patch_height
+        elif y < 0:
+            y = 0
+
+        return {'file': slide_id, 'coords': (x, y)}
+    
+
+    def __getitem__(self, sample_id) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, Tuple[int, int]]:
+        # get slide and coords from sample 
+        sample = self.samples[sample_id]
+        slide_id, coords = sample['file'], sample['coords']
+
+        # get slide objects
+        slide = self.slide_objects[slide_id]
+
+        # load image and targets 
+        image = slide.load_image(coords)   
+        labels = slide.load_labels(coords)       
+
+        # get image size (always the same)
+        image_hw = slide.patch_size
+
+        if not labels.any():  # empty patch 
+            xyxy_bboxes = np.array([])
+            class_ids = np.array([])
+        else:
+            xyxy_bboxes = labels[:, 1:]
+            class_ids = labels[:, 0]
+
+        if self.transforms is not None:
+            transformed = self.transforms(
+                image=image, bboxes=xyxy_bboxes, labels=class_ids
+            )
+            image = transformed["image"]
+            xyxy_bboxes = np.array(transformed["bboxes"])
+            class_ids = np.array(transformed["labels"])
+
+        return image, xyxy_bboxes, class_ids, slide.slide_path.name
+    
+
+
+            
+
+
+
+
+        
+
+
+
+
+

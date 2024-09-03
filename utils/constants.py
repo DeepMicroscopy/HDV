@@ -6,11 +6,41 @@ Some constants to visualize distance metrics
 
 """
 
-# TODO: get layers from before and from head 
-# 158-161 should be the layers attached to the DetectHead
+# Dataset codes ----------------------------------------------------------------------------- 
+
+MIDOG_ABBREVATIONS = {
+    0: 'HMEL',
+    1: 'HAC',
+    2: 'HBLC',
+    3: 'CMC',
+    4: 'CCMCT',
+    5: 'HMEN',
+    6: 'HCOC',
+    7: 'CHAS',
+    8: 'FSTS',
+    9: 'FLYM'
+}
+
+# Yolov7 architeture  ---------------------------------------------------------------------------
+
+
+YOLO_LAYER_CODES = {
+    # backbone layers 
+
+
+    # neck layers
+
+
+    # head layers 
+
+}
+
+
+
+# Yolov7 D6 architeture  ---------------------------------------------------------------------------
 
 # layers for feature extraction
-YOLO_LAYERS = [
+YOLO_D6_LAYERS = [
     # backbone layers 
     'model.14',     # last of P2
     'model.27',     # last of P3
@@ -37,27 +67,14 @@ YOLO_LAYERS = [
     'model.166.m.3',    # head P6
 ]
 
-MIDOG_ABBREVATIONS = {
-    0: 'HMEL',
-    1: 'HAC',
-    2: 'HBLC',
-    3: 'CMC',
-    4: 'CCMCT',
-    5: 'HMEN',
-    6: 'HCOC',
-    7: 'CHAS',
-    8: 'FSTS',
-    9: 'FLYM'
-}
 
-
-LAYER_CODES = {
+YOLO_D6_LAYER_CODES = {
     # backbone layers 
-    'model.14': 'P2',
-    'model.27': 'P3',
-    'model.40': 'P4',
-    'model.53': 'P5',
-    'model.66': 'P6',
+    'model.14': 'C2',
+    'model.27': 'C3',
+    'model.40': 'C4',
+    'model.53': 'C5',
+    'model.66': 'C6',
 
     # neck layers
     'model.83': 'Up-Neck-P5',
@@ -66,14 +83,46 @@ LAYER_CODES = {
     'model.129': 'Down-Neck-P4',
     'model.143': 'Down-Neck-P5',
     'model.157': 'Down-Neck-P6',
-    'model.158': 'Final-Neck-P3',
-    'model.159': 'Final-Neck-P4',
-    'model.160': 'Final-Neck-P5',
-    'model.161': 'Final-Neck-P6',
+    'model.158': 'P3',
+    'model.159': 'P4',
+    'model.160': 'P5',
+    'model.161': 'P6',
 
     # head layers 
-    'model.166.m.0': 'Head-P3',   
-    'model.166.m.1': 'Head-P4',   
-    'model.166.m.2': 'Head-P5',   
-    'model.166.m.3': 'Head-P6',   
+    'model.166.m.0': 'O3',   
+    'model.166.m.1': 'O4',   
+    'model.166.m.2': 'O5',   
+    'model.166.m.3': 'O6',   
+}
+
+
+
+# FCOS  & RetinaNet architeture  ---------------------------------------------------------------------------
+
+
+FCOS_LAYER_CODES = {
+        
+        # common layers 
+        'model.backbone.body.layer1': 'C2',
+        'model.backbone.body.layer2': 'C3',
+        'model.backbone.body.layer3': 'C4',
+        'model.backbone.body.layer4': 'C5',
+        'model.backbone.fpn.layer_blocks.0': 'P2',
+        'model.backbone.fpn.layer_blocks.1': 'P3',
+        'model.backbone.fpn.layer_blocks.2': 'P4',
+        'model.backbone.fpn.layer_blocks.3': 'P5',
+        'model.backbone.fpn.extra_blocks.pool': 'P6',
+
+        # fcos, retinanet layers
+        'model.head.classification_head.conv_0': 'H2',
+        'model.head.classification_head.conv_1': 'H3',
+        'model.head.classification_head.conv_2': 'H4',
+        'model.head.classification_head.conv_3': 'H5',
+        'model.head.classification_head.conv_4': 'H6',
+        'model.head.classification_head.cls_logits_0': 'O2',
+        'model.head.classification_head.cls_logits_1': 'O3',
+        'model.head.classification_head.cls_logits_2': 'O4',
+        'model.head.classification_head.cls_logits_3': 'O5',
+        'model.head.classification_head.cls_logits_4': 'O6',
+
 }
