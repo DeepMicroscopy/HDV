@@ -78,7 +78,7 @@ class Yolov7_Inference(Strategy):
         
         # load image ds and dl
         if wsi:
-            raise NotImplementedError()
+            ds = WSI_InferenceDataset(slide_path=image, patch_size=patch_size, overlap=overlap, level=0)
         else:
             ds = ROI_InferenceDataset(image=image, size=patch_size, overlap=overlap)
 
@@ -138,7 +138,9 @@ class Yolov7_Inference(Strategy):
 
 
 
-
+# ---------------------------------------------------------------------------------------------- 
+# Region of intereset inference dataset using PIL ----------------------------------------------
+# ----------------------------------------------------------------------------------------------
 
 
 class ROI_InferenceDataset(Dataset):
@@ -187,8 +189,161 @@ class ROI_InferenceDataset(Dataset):
         images, x_coords, y_coords = zip(*batch)
         images = torch.stack(images, dim=0)
         return images, x_coords, y_coords
+    
+
+# ---------------------------------------------------------------------------------------------- 
+# Wholse slide image inference dataset using openslide -----------------------------------------
+# ----------------------------------------------------------------------------------------------
 
 
+def create_active_map(slide: OpenSlide) -> Tuple[np.ndarray, int]:
+    """_summary_
+
+    Args:
+        slide (OpenSlide): _description_
+
+    Returns:
+        Tuple[np.ndarray, int]: _description_
+    """
+    downsamples_int = [int(x) for x in slide.level_downsamples]
+    if 32 in downsamples_int:
+        ds = 32
+    elif 16 in downsamples_int:
+        ds = 16
+
+    # get overview image
+    level = np.where(np.abs(np.array(slide.level_downsamples)-ds)<0.1)[0][0]
+    overview = np.array(slide.read_region(level=level, location=(0,0), size=slide.level_dimensions[level]))
+    
+    # remove transparent alpha channel 
+    alpha_zero_mask = (overview[:, :, 3] == 0)
+    overview[alpha_zero_mask, :] = 255
+    
+    # OTSU
+    gray = cv2.cvtColor(overview[:,:,0:3],cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+
+    # closing
+    elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9))
+    dil = cv2.dilate(thresh, kernel=elem)
+    activeMap = cv2.erode(dil, kernel=elem)
+    
+    return activeMap, ds
+
+
+class WSI_InferenceDataset(Dataset):
+    def __init__(
+            self,
+            slide_path: Union[str, Path],
+            patch_size: int = 512,
+            level: int = 0,
+            overlap: float = 0.3,
+            tissue_thres: float = 0.1,
+            transforms: Union[List[Callable], Callable] = None
+            ) -> None:
+        """_summary_
+
+        Args:
+            slide_path (Union[str, Path]): _description_
+            patch_size (int, optional): _description_. Defaults to 1024.
+            level (int, optional): _description_. Defaults to 1.
+            overlap (float, optional): _description_. Defaults to 0.1.
+            transforms (Union[List[Callable], Callable], optional): _description_. Defaults to None.
+        """
+        self.slide = openslide.open_slide(str(slide_path))
+        self.patch_size = patch_size
+        self.level = level
+        self.overlap = overlap
+        self.transforms = transforms
+        self.tissue_thres = tissue_thres
+
+
+        self.active_map, self.ds = self._create_active_map()
+        self.coords = self._get_coords()
+    
+
+    @property 
+    def target_size(self) -> Tuple[int, int]:
+        """_summary_
+
+        Returns:
+            Tuple[int, int]: _description_
+        """
+        return self.slide.level_dimensions[self.level]
+    
+
+    @property
+    def down_factor(self) -> float:
+        """_summary_
+
+        Returns:
+            float: _description_
+        """
+        return self.slide.level_downsamples[self.level]
+    
+
+    def _create_active_map(self) -> np.ndarray:
+        """_summary_
+
+        Returns:
+            np.ndarray: _description_
+        """
+        return create_active_map(self.slide)
+
+
+
+    def _get_coords(self) -> List[Tuple[int, int]]:
+        """_summary_
+        """
+        width, height = self.slide.dimensions
+        down_factor = self.down_factor
+        patch_size_level = self.patch_size * down_factor
+
+        coords = []
+        for y in range(0, height+1, int(patch_size_level * (1 - self.overlap))):
+            for x in range(0, width+1, int(patch_size_level * (1 - self.overlap))):
+                x = min(x, width - patch_size_level)
+                y = min(y, height - patch_size_level)
+                
+                x_ds = int(np.floor(float(x) / self.ds))
+                y_ds = int(np.floor(float(y) / self.ds))
+                step_ds = int(np.ceil(float(patch_size_level)/self.ds))
+                need_calc = np.sum(self.active_map[y_ds:y_ds+step_ds,x_ds:x_ds+step_ds] / 255.)>self.tissue_thres*step_ds*step_ds
+
+                if not need_calc:
+                    continue 
+
+                coords.append((int(x), int(y)))
+
+        return coords
+
+
+    def __len__(self) -> int:
+        """Returns the number of inference patches."""
+        return len(self.coords)
+
+
+    def __getitem__(self, idx) -> Tuple[Tensor, Coords]:
+        x, y = self.coords[idx]
+        patch = self.slide.read_region((x, y), level=self.level, size=(self.patch_size, self.patch_size)).convert('RGB')
+        patch = np.array(patch)
+        if self.transforms is not None:
+            transformed = self.transforms(image=patch)
+            patch = transformed['image']      
+        patch = torch.from_numpy(patch / 255.).permute(2, 0, 1).type(torch.float32)
+        return patch, x, y
+
+        
+    @staticmethod
+    def collate_fn(batch) -> Tuple[torch.Tensor, List[int], List[int]]:
+        images, x_coords, y_coords = zip(*batch)
+        images = torch.stack(images, dim=0)
+        return images, x_coords, y_coords
+
+
+# ---------------------------------------------------------------------------------------------- 
+# Image processor to handle different inference strategies--------------------------------------
+# ----------------------------------------------------------------------------------------------
 
 
 class ImageProcessor:

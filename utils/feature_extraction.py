@@ -4,6 +4,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import os
+import openslide 
+from openslide import OpenSlide
+from pathlib import Path
 
 from PIL import Image
 from torch import Tensor, nn
@@ -247,11 +250,35 @@ class CenteredObjectDataset(Dataset):
             classes (List[int]): List of class labels [N]
             domains (Union[str, int]): Domain label [1]
         """
-        self.slide = Image.open(file).convert('RGB')
+        self.slide = self.read_slide(file)
         self.coords = coords
         self.classes = classes
         self.domain = domain
         self.size = patch_size
+
+
+    @staticmethod
+    def read_slide(filename: str) -> Image.Image | OpenSlide:
+        """Opens either PIL Image or OpenSlide object."""
+        if Path(filename).suffix in ['.tiff', '.tif', '.jpeg', '.png']:
+            return Image.open(filename).convert('RGB')
+        else:
+            return openslide.open_slide(filename)
+        
+
+    def load_image(self, coords: Tuple[int, int, int, int]) -> np.ndarray:
+        """Reads a patch from different image objects."""
+        x1, y1, x2, y2 = coords
+        if isinstance(self.slide, Image.Image):
+            image = self.slide.crop((x1, y1, x2, y2)).convert('RGB')
+        elif isinstance(self.slide, OpenSlide):
+            width = x2 - x1
+            height = y2 - y1 
+            image = self.slide.read_region((x1, y1), 0, (width, height)).convert('RGB') 
+        else:
+            raise ValueError(f'Unsupported slide type: {type(self.slide)}')
+        return np.array(image) / 255.
+
 
     def __len__(self) -> int: 
         return len(self.coords)
@@ -266,7 +293,7 @@ class CenteredObjectDataset(Dataset):
         top_left_y = cy - self.size // 2
         bottom_right_x = top_left_x + self.size
         bottom_right_y = top_left_y + self.size
-        patch = np.array(self.slide.crop((top_left_x, top_left_y, bottom_right_x, bottom_right_y))) / 255.
+        patch = self.load_image((top_left_x, top_left_y, bottom_right_x, bottom_right_y))
         patch = torch.from_numpy(patch).permute(2, 0, 1).type(torch.float32)
         target = torch.as_tensor((int(x1-top_left_x), int(y1-top_left_y), int(x2-top_left_x), int(y2-top_left_y)), dtype=torch.long)
         cls = torch.as_tensor(cls, dtype=torch.long)
@@ -283,7 +310,6 @@ class CenteredObjectDataset(Dataset):
 
 
 
-
 def extract_features(
         model: torch.nn.Module, 
         layer: str, 
@@ -292,7 +318,8 @@ def extract_features(
         samples: Dict[str, List[Tuple[int, int]]], 
         tumor_code: List[str],
         batch_size: int=4,
-        num_workers: int=4) -> Tuple[torch.Tensor]:
+        num_workers: int=4,
+        verbose: bool=False) -> Tuple[torch.Tensor]:
         """Extract features from the layer of the model on a given set of samples from the sampler.
 
         Args:
@@ -330,6 +357,9 @@ def extract_features(
                 # create dataset and dataloader 
                 ds = CenteredObjectDataset(slide, patch_size, coords, labels, domain)
                 dl = DataLoader(ds, batch_size=batch_size, num_workers=num_workers, drop_last=False, collate_fn=ds.collate_fn)
+
+                if verbose:
+                    dl = tqdm(dl, desc='Processing patches')
 
                 # loop over the samples 
                 for (images, boxes, classes, domains) in dl:

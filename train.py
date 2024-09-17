@@ -638,7 +638,6 @@ if __name__ == '__main__':
     parser.add_argument('--fg_prob', type=float, default=0.5, help='mitotic figure probability')
     parser.add_argument('--arb_prob', type=float, default=0.25, help='arbitrary probability')
 
-
     # general params
     parser.add_argument('--weights', type=str, default='yolo7.pt', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')

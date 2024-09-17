@@ -24,17 +24,51 @@ MIDOG_ABBREVATIONS = {
 # Yolov7 architeture  ---------------------------------------------------------------------------
 
 
-YOLO_LAYER_CODES = {
+YOLO_LAYERS = [
     # backbone layers 
-
+    'model.11',     # last of P2
+    'model.24',     # last of P3
+    'model.37',     # last of P4
+    'model.50',     # last of P5
 
     # neck layers
+    'model.63',     # last of first top down ELAN (after P5 and connected to P4)
+    'model.75',     # last of second top down (ELAN?) (after first ELAN and connected to P3)
+    'model.88',     # last of first bottom down ELAN (P4)
+    'model.101',    # last of second bottom down ELAN (P5)
 
+    'model.102',    # last layer of neck connected to head P3
+    'model.103',    # last layer of neck connected to head P4
+    'model.104',    # last layer of neck connected to head P5
 
     # head layers 
+    'model.105.m.0',    # head P3
+    'model.105.m.1',    # head P4
+    'model.105.m.2',    # head P5
+]
 
+
+YOLO_LAYER_CODES = {
+    # backbone layers 
+    'model.11': 'C2',
+    'model.24': 'C3',
+    'model.37': 'C4',
+    'model.50': 'C5',
+
+    # neck layers
+    'model.63': 'Up-Neck-P4',
+    'model.75': 'Up-Neck-P3',
+    'model.88': 'Down-Neck-P4',
+    'model.101': 'Down-Neck-P5',
+    'model.102': 'P3',
+    'model.103': 'P4',
+    'model.104': 'P5',
+
+    # head layers 
+    'model.105.m.0': 'O3',   
+    'model.105.m.1': 'O4',   
+    'model.105.m.2': 'O5',   
 }
-
 
 
 # Yolov7 D6 architeture  ---------------------------------------------------------------------------

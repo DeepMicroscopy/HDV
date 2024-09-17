@@ -10,8 +10,9 @@ import argparse
 
 from extract_features import get_all_annotations
 from utils.hellinger import domain_specific_hellinger_distance
+from utils.gdv import domain_specific_gdv
 from utils.factory import ConfigCreator
-
+from utils.dataset_adaptors import load_astma_df
 
 CONFIG_FILE = 'optimized_models/yolov7_d6_ALL_0.yaml'
 DATASET_FILE = 'annotations/midog_2022_test.csv'
@@ -43,6 +44,7 @@ def get_args():
     parser.add_argument("--aggregation",      type=str, default=AGGREGATION, help='Aggregation function.')
     parser.add_argument("--split",            type=str, default=SPLIT)
     parser.add_argument("--dimensions",       type=int, default=C, help="Number of dimensions to select with highest variance.")
+    parser.add_argument("--class_metrics",    action="store_true", help="Returns between class metrics.")
     return parser.parse_args()
 
 
@@ -56,22 +58,34 @@ def main(args):
     print(f'\nComputing similarities for model: {model_name}')
     print(f'Computing metric: ', args.metric)
 
-    # load data
-    dataset = pd.read_csv(args.dataset_file)
 
-    # filter test samples 
-    test_dataset = dataset.query('split == @args.split')
+    print('Initializing data ...', end=' ')
+    if 'cells' in args.dataset_file:
+        # load test slide 
+        _, test_dataset, _ = load_astma_df(args.dataset_file)
+    elif 'midog' in args.dataset_file.lower():
+        dataset = pd.read_csv(args.dataset_file)
+        # filter eval samples 
+        test_dataset = dataset.query('split == "test"')
+    else:
+        raise ValueError(f'Unsupported dataset file {args.dataset_file}')
+    print('Done.')
     
     # create test codes
-    test_codes = {k: v for k, v in enumerate(test_dataset[args.domain_col].unique())}   
+    if args.domain_col == 'None':
+        test_codes = {0: 'None'}
+    else:
+        test_codes = {k: v for k, v in enumerate(test_dataset[args.domain_col].unique())}
 
     # get test samples and labels
     test_samples = get_all_annotations(
         dataset=test_dataset, 
         img_dir_path=args.img_dir, 
         domain_col=args.domain_col, 
-        only_border=args.only_border
+        only_border=args.only_border,
+        box_format=args.box_format
         )
+
     # testset labels
     test_annos = torch.tensor([v for l in test_samples.values() for v in l['labels']])
     if 'midog' in args.dataset_file.lower():
@@ -107,10 +121,17 @@ def main(args):
             distance=args.coefficient, 
             decimals=4,
             aggregation=args.aggregation,
-            num_dimensions=args.dimensions)
+            num_dimensions=args.dimensions,
+            class_metrics=args.class_metrics)
         
     elif args.metric == 'gdv':
-        raise NotImplementedError()
+        all_dist = domain_specific_gdv(
+            features_dict=features, 
+            domains=domains, 
+            labels=test_annos, 
+            codes=test_codes, 
+            decimals=4
+        )
     else:
         ValueError(f'Metric {args.metric} not recognized.')
     print('Done.')

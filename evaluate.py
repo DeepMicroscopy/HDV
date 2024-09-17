@@ -9,7 +9,8 @@ from tqdm.autonotebook import tqdm
 
 from utils.inference import Yolov7_Inference, ImageProcessor
 from utils.factory import ConfigCreator, ModelFactory
-from utils.evaluation import MIDOG2022Evaluation
+from utils.evaluation import MIDOG2022Evaluation, AstmaEvaluation
+from utils.dataset_adaptors import load_astma_df
 
 
 BATCH_SIZE = 8
@@ -27,6 +28,7 @@ PATCH_SIZE = 1280
 SAVE_PATH = 'results/'
 SPLIT = 'test'
 VERBOSE = False
+WSI = False
 
 
 
@@ -47,6 +49,7 @@ def get_args():
     parser.add_argument("--save_path",      type=str, default=SAVE_PATH, help="Directory to save results.")
     parser.add_argument("--split",          type=str, default=SPLIT, help="Data split to evaluate.")
     parser.add_argument("--verbose",        action="store_true", help="If True, prints pbar for each image.")
+    parser.add_argument("--wsi",            action="store_true")
     return parser.parse_args()
 
 
@@ -73,7 +76,7 @@ def main(args):
         conf_thres=config_file.det_thresh,
         iou_thres_1=args.iou_thres_1,
         iou_thres_2=args.iou_thres_2,
-        augment=args.augment
+        augment=args.augment,
         )
 
     # set up image processor
@@ -83,7 +86,8 @@ def main(args):
         'overlap': args.overlap,
         'device': args.device,
         'num_workers': args.num_workers,
-        'verbose': args.verbose
+        'verbose': args.verbose,
+        'wsi': args.wsi
     }
 
     # create processor
@@ -93,11 +97,15 @@ def main(args):
     print()
 
     print('Initializing data ...', end=' ')
-    # load data 
-    dataset = pd.read_csv(args.dataset_file)
-
-    # filter eval samples 
-    eval_dataset = dataset.query('split == @args.split')
+    if 'cells' in args.dataset_file:
+        # load test slide 
+        _, eval_dataset, _ = load_astma_df(args.dataset_file)
+    elif 'midog' in args.dataset_file.lower():
+        dataset = pd.read_csv(args.dataset_file)
+        # filter eval samples 
+        eval_dataset = dataset.query('split == @args.split')
+    else:
+        raise ValueError(f'Unsupported dataset file {args.dataset_file}')
     print('Done.')
 
     # collect filenames
@@ -137,13 +145,22 @@ def main(args):
         output_file = save_path.joinpath(config_file.model_name + '.json')
 
     print('Starting evaluation ...')
-    evaluation = MIDOG2022Evaluation(
-        gt_file=args.dataset_file,
-        output_file=output_file,
-        preds=preds,
-        det_thresh=config_file.det_thresh,
-        split=args.split
-    )
+    if 'midog' in args.dataset_file.lower():
+        evaluation = MIDOG2022Evaluation(
+            gt_file=args.dataset_file,
+            output_file=output_file,
+            preds=preds,
+            det_thresh=config_file.det_thresh,
+            split=args.split
+        )
+    elif 'cells' in args.dataset_file.lower():
+        evaluation = AstmaEvaluation(
+            gt_file=eval_dataset,
+            preds=preds,
+            output_file=output_file,
+            det_thresh=config_file.det_thresh,
+            iou_thresh=0.5
+        )
 
     # evaluate
     evaluation.evaluate()

@@ -158,7 +158,7 @@ class ConfigCreator:
 
 
 MODEL_MAPPINGS = {
-        'Yolov7': make_yolov7_model, 
+        'yolov7': make_yolov7_model, 
     }
 
 

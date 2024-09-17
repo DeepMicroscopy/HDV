@@ -1,11 +1,13 @@
 from typing import Dict
 import numpy as np
 import torch 
+import itertools
 
 from torch import Tensor
 from scipy.stats import gaussian_kde 
 from sklearn.preprocessing import scale 
 from astropy.stats import knuth_bin_width, bayesian_blocks, freedman_bin_width
+
 
 
 def bhattacharyya_coef(
@@ -211,6 +213,7 @@ def hellinger_distance(
         num_dimensions: int = None,
         n_steps: int = 200, 
         n_bins: int = 10, 
+        class_metrics: bool = False
         ) -> float :
     """Computes binary or multi-class aggregated hellinger distance over a set of multidimensional feautre vectors. 
  
@@ -232,8 +235,6 @@ def hellinger_distance(
     """
     L = np.unique(targets).tolist()
 
-
-
     if len(L) < 2:
         raise ValueError(f'Need at least two classes!')
     
@@ -249,17 +250,22 @@ def hellinger_distance(
     
     # mutli-class HDV
     else:
+
         dist_list = []
 
-        # compute len(L) HDVs
-        for idx, l in enumerate(L):
-            u = features[targets == l, :]
-            v = features[targets != l, :]
-            dist_i = _compute_hellinger_dinstance(u, v, method, distance, aggregation, n_steps, n_bins)
-            dist_list.append(dist_i)
-        
+        for row_idx, col_idx in itertools.combinations(L, 2):
+                    u = features[targets == row_idx, :]
+                    v = features[targets == col_idx, :]
+                    dist = _compute_hellinger_dinstance(u, v, method, distance, aggregation, n_steps, n_bins)
+                    dist_list.append(((row_idx, col_idx), dist))
+                
         # aggregate HDVs
-        dist = np.mean(dist_list)
+        dist = np.mean([s[1] for s in dist_list])
+
+        if class_metrics:
+            d = {s[0]: s[1] for s in dist_list}
+            d.update({'avg': dist})
+            return d 
 
     return dist
     
@@ -276,7 +282,8 @@ def domain_specific_hellinger_distance(
         num_dimensions: int = None,
         decimals: int = 2, 
         n_steps: int = 200, 
-        n_bins: int = 20
+        n_bins: int = 20,
+        class_metrics: bool = False
         ) -> Dict[str, float]:
     """Computes the hellinger distance over multiple sets of layers and domains.
 
@@ -313,10 +320,14 @@ def domain_specific_hellinger_distance(
                 aggregation=aggregation,
                 num_dimensions=num_dimensions,
                 n_steps=n_steps, 
-                n_bins=n_bins
+                n_bins=n_bins,
+                class_metrics=class_metrics
                 )
             
-            layer_dist[idx] = np.round(dist, decimals=decimals)
+            if isinstance(dist, dict):
+                layer_dist[idx] = {k: np.round(v, decimals=decimals) for k, v in dist.items()}
+            else:
+                layer_dist[idx] = np.round(dist, decimals=decimals)
         
         all_dist[layer] = layer_dist
 

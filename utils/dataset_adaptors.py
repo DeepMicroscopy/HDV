@@ -776,8 +776,8 @@ class AstmaDatasetAdaptor(Dataset):
         """Sampling strategy that samples with equal probability from all slides."""
         slide_ids = choice(list(self.slide_objects.keys()), size=self.num_samples, replace=True)
         return slide_ids
-
     
+
     def sample_coords(self, slide_id: int) -> Dict[int, Coords]:
         """Method to sample patch coordinates from a slide."""
         
@@ -791,18 +791,38 @@ class AstmaDatasetAdaptor(Dataset):
         # we use the upper half of the image for training and the lower half for evaluation
         border = slide_height // 2
         
-        # we sample patches randomly as the density of cells is quite high
-        x = randint(patch_width / 2, slide_width-patch_width / 2)
+        # we sample patches around each class with same probability
+        class_idx = choice(self.classes, size=1).item()
 
         # sample from upper half
         if self.split == 'train':
-            y = randint(patch_height / 2, border - patch_height / 2)
+            labels = sl.annotations[sl.annotations['ymax'] < (border - patch_height/2)]
         # sample from lower half 
         elif self.split == 'val':
-            y = randint(border + patch_height / 2, slide_height - patch_height / 2)
-        # sample from complete image 
-        else: 
-            y = randint(patch_height / 2, slide_height - patch_height / 2)
+            labels = sl.annotations[sl.annotations['ymin'] > (border + patch_height/2)]
+        # sample from entire image
+        else:
+            labels = sl.annotations
+
+        # get class annotations
+        class_samples = labels.query('label == @class_idx')[['label', 'xmin', 'ymin', 'xmax', 'ymax']].to_numpy()
+
+        # if no class annotations are present in that area get a random patch
+        if class_samples.shape[0] == 0:
+                x = randint(patch_width / 2, slide_width-patch_width / 2)
+                if self.split == 'train':
+                    y = randint(patch_height / 2, border - patch_height / 2)
+                elif self.split == 'val':
+                    y = randint(border + patch_height / 2, slide_height - patch_height / 2)
+                else: 
+                    y = randint(patch_height / 2, slide_height - patch_height / 2)
+        # sample class annotation
+        else:
+            idx = randint(class_samples.shape[0])
+            xmin, ymin, xmax, ymax = class_samples[idx, 1:]
+            x = (xmin + xmax) / 2
+            y = (ymin + ymax) / 2
+
 
         # set offsets
         offset_scale = 0.5
@@ -825,6 +845,54 @@ class AstmaDatasetAdaptor(Dataset):
             y = 0
 
         return {'file': slide_id, 'coords': (x, y)}
+    
+    # def sample_coords(self, slide_id: int) -> Dict[int, Coords]:
+    #     """Method to sample patch coordinates from a slide."""
+        
+    #     # get slide object
+    #     sl = self.slide_objects[slide_id]
+
+    #     # get dims
+    #     slide_width, slide_height = sl.slide_size
+    #     patch_width, patch_height = sl.patch_size
+
+    #     # we use the upper half of the image for training and the lower half for evaluation
+    #     border = slide_height // 2
+        
+    #     # we sample patches randomly as the density of cells is quite high
+    #     x = randint(patch_width / 2, slide_width-patch_width / 2)
+
+    #     # sample from upper half
+    #     if self.split == 'train':
+    #         y = randint(patch_height / 2, border - patch_height / 2)
+    #     # sample from lower half 
+    #     elif self.split == 'val':
+    #         y = randint(border + patch_height / 2, slide_height - patch_height / 2)
+    #     # sample from complete image 
+    #     else: 
+    #         y = randint(patch_height / 2, slide_height - patch_height / 2)
+
+    #     # set offsets
+    #     offset_scale = 0.5
+    #     xoffset = randint(-patch_width, patch_width) * offset_scale
+    #     yoffset = randint(-patch_height, patch_height) * offset_scale
+
+    #     # shift coordinates and return top left corner
+    #     x = int(x - patch_width / 2 + xoffset) 
+    #     y = int(y - patch_height / 2 + yoffset)
+
+    #     # avoid black borders
+    #     if x + patch_width > slide_width:
+    #         x = slide_width - patch_width
+    #     elif x < 0:
+    #         x = 0
+        
+    #     if y + patch_height > slide_height:
+    #         y = slide_height - patch_height
+    #     elif y < 0:
+    #         y = 0
+
+    #     return {'file': slide_id, 'coords': (x, y)}
     
 
     def __getitem__(self, sample_id) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, Tuple[int, int]]:

@@ -8,7 +8,8 @@ from tqdm import tqdm
 
 from utils.factory import ConfigCreator, ModelFactory
 from utils.inference import Yolov7_Inference, ImageProcessor
-from utils.evaluation import optimize_threshold
+from utils.evaluation import optimize_threshold, optimize_multiclass_threshold
+from utils.dataset_adaptors import load_astma_df
 
 
 # set default parameters
@@ -32,6 +33,7 @@ PATCH_SIZE = 1280
 TUMOR_ID = None
 VERBOSE = False
 WEIGHTS = '/home/ammeling/projects/Bhattacharyya/lymph/checkpoints/LitFCOS_all_ada_0_epoch78_val_ap_0.84.ckpt'
+SPLIT = 'val'
 
 
 def get_args():
@@ -57,6 +59,8 @@ def get_args():
     parser.add_argument("--tumor_id",       type=str, default=TUMOR_ID, help="Which tumor type to use for optimizing threshold.")
     parser.add_argument("--verbose",        action="store_true", help="If True, prints pbar for each image.")
     parser.add_argument("--weights",        type=str, default=WEIGHTS, help="Path to model checkpoint.")
+    parser.add_argument("--wsi",            action="store_true", help="Processes WSI")
+    parser.add_argument("--split",          type=str, default=SPLIT, help="Data split to evaluate.")
     return parser.parse_args()
 
 
@@ -107,7 +111,8 @@ def main(args):
         'overlap': args.overlap,
         'device': args.device,
         'num_workers': args.num_workers,
-        'verbose': args.verbose
+        'verbose': args.verbose,
+        'wsi': args.wsi
     }
 
     # create processor
@@ -117,11 +122,16 @@ def main(args):
     print()
 
     print('Initializing data ...', end=' ')
-    # load data 
-    dataset = pd.read_csv(args.dataset_file)
-
-    # filter validation samples 
-    valid_dataset = dataset.query('split == "val"')
+    if 'cells' in args.dataset_file:
+        # load test slide 
+        valid_dataset, _, _ = load_astma_df(args.dataset_file)
+    elif 'midog' in args.dataset_file.lower():
+        dataset = pd.read_csv(args.dataset_file)
+        # filter eval samples 
+        valid_dataset = dataset.query('split == @args.split')
+    else:
+        raise ValueError(f'Unsupported dataset file {args.dataset_file}')
+    print('Done.')
 
     # filter specific tumor types
     if args.tumor_id is not None:
@@ -150,21 +160,31 @@ def main(args):
         # extract results
         boxes = res['boxes']
         scores = res['scores']
+        labels = res['labels']
 
         if boxes.shape[0] > 0:
-            preds[file] = {'boxes': boxes, 'scores': scores}
+            preds[file] = {'boxes': boxes, 'scores': scores, 'labels': labels}
         else:
             continue 
 
-    # optimize threshold
-    valid_dataset = valid_dataset.query('label == 1')
+    if 'midog' in args.dataset_file.lower():
+        # optimize threshold
+        valid_dataset = valid_dataset.query('label == 1')
 
-    # optimize threshold
-    bestThres, bestF1, allF1, allThres = optimize_threshold(
-        dataset=valid_dataset,
-        preds=preds,
-        minthres=args.min_thresh
-    )
+        # optimize threshold
+        bestThres, bestF1, allF1, allThres = optimize_threshold(
+            dataset=valid_dataset,
+            preds=preds,
+            minthres=args.min_thresh
+        )
+    elif 'cells' in args.dataset_file.lower():
+
+        bestThres, bestF1, allF1, allThres = optimize_multiclass_threshold(
+            dataset=valid_dataset,
+            preds=preds,
+            min_thresh=args.min_thresh,
+            iou_thresh=0.5
+        )
 
     # reduce threshold to be more sensitive on ood data
     propThres = np.round(bestThres - bestThres * 0.1, decimals=3)
