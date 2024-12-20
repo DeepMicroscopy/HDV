@@ -38,6 +38,10 @@ data/images/*
 0*.ipynb
 1*.ipynb
 
+patch_dataset_*.py
+requirements_2.txt
+
+
 results/
 results*.csv
 annotations/
