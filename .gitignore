@@ -35,7 +35,9 @@ data/images/*
 !data/images/bus.jpg
 !data/*.sh
 
-00_*.ipynb
+0*.ipynb
+1*.ipynb
+
 results/
 results*.csv
 annotations/
