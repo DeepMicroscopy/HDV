@@ -323,7 +323,7 @@ def extract_features(
         """Extract features from the layer of the model on a given set of samples from the sampler.
 
         Args:
-            model (nn.Module): Pytorch MaskRCNN.
+            model (nn.Module): Pytorch model.
             layer (str): Layer name from which to extract feautres.
             samples (Dict[str, List[Tuple[int, int]]]): Dictionary with filenames and coordinates.
 
