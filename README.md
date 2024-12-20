@@ -6,7 +6,7 @@ Through empirical validation on real-world histopathology datasets, we demonstra
 
 <div align="center">
     <a href="./">
-        <img src="./figure/overview_feature_extraction.png" width="95%"/>
+        <img src="./docs/overview_feature_extraction.png" width="95%"/>
     </a>
 </div>
 

@@ -41,7 +41,6 @@ data/images/*
 patch_dataset_*.py
 requirements_2.txt
 
-
 results/
 results*.csv
 annotations/
