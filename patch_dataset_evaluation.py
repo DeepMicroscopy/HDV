@@ -205,7 +205,7 @@ def main(args):
             preds=results,
             output_file=output_file,
             det_thresh=config_file.det_thresh,
-            iou_thresh=0.5
+            radius=25
         )
 
     else:
