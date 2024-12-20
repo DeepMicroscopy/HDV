@@ -30,6 +30,12 @@ class BCEBlurWithLogitsLoss(nn.Module):
         return loss.mean()
 
 
+class OrdinalCELoss(nn.Module):
+    def __init__(self, num_classes: int=5):
+        pass
+
+
+
 class SigmoidBin(nn.Module):
     stride = None  # strides computed during build
     export = False  # onnx export

@@ -9,7 +9,7 @@ from tqdm.autonotebook import tqdm
 
 from utils.inference import Yolov7_Inference, ImageProcessor
 from utils.factory import ConfigCreator, ModelFactory
-from utils.evaluation import MIDOG2022Evaluation, AstmaEvaluation
+from utils.evaluation import MIDOG2022Evaluation, LymphocyteEvaluation, MultiClassEvaluation
 from utils.dataset_adaptors import load_astma_df
 
 
@@ -50,6 +50,7 @@ def get_args():
     parser.add_argument("--split",          type=str, default=SPLIT, help="Data split to evaluate.")
     parser.add_argument("--verbose",        action="store_true", help="If True, prints pbar for each image.")
     parser.add_argument("--wsi",            action="store_true")
+    parser.add_argument("--overwrite",      action="store_true", help="Overwrites existing result file.")
     return parser.parse_args()
 
 
@@ -100,13 +101,28 @@ def main(args):
     if 'cells' in args.dataset_file:
         # load test slide 
         _, eval_dataset, _ = load_astma_df(args.dataset_file)
-    elif 'midog' in args.dataset_file.lower():
+    elif 'midog' in args.dataset_file.lower() or 'lymph' in args.dataset_file.lower():
         dataset = pd.read_csv(args.dataset_file)
         # filter eval samples 
         eval_dataset = dataset.query('split == @args.split')
     else:
         raise ValueError(f'Unsupported dataset file {args.dataset_file}')
     print('Done.')
+
+    # check save path
+    save_path = Path(args.save_path)
+    save_path.mkdir(exist_ok=True, parents=True)
+
+    # init output file
+    if args.output_file is not None:
+        output_file = save_path.joinpath(args.output_file)    
+    else:
+        output_file = save_path.joinpath(config_file.model_name + '.json')
+
+    # skip if already exists
+    if output_file.exists() and not args.overwrite:
+        raise ValueError(f'Output file already exists. Skipping evaluation.')
+
 
     # collect filenames
     filenames = eval_dataset.filename.unique()
@@ -123,26 +139,9 @@ def main(args):
         # compute predictions
         res = processor.process_image(image)
 
-        # extract results
-        boxes = res['boxes']
-        scores = res['scores']
-        labels = res['labels']
-
         # collect predictions
-        if boxes.shape[0] > 0:
-            preds[file] = {'boxes': boxes, 'scores': scores, 'labels': labels}
-        else:
-            continue 
+        preds[file] = res
 
-    # check save path
-    save_path = Path(args.save_path)
-    save_path.mkdir(exist_ok=True, parents=True)
-
-    # init output file
-    if args.output_file is not None:
-        output_file = save_path.joinpath(args.output_file)    
-    else:
-        output_file = save_path.joinpath(config_file.model_name + '.json')
 
     print('Starting evaluation ...')
     if 'midog' in args.dataset_file.lower():
@@ -154,13 +153,25 @@ def main(args):
             split=args.split
         )
     elif 'cells' in args.dataset_file.lower():
-        evaluation = AstmaEvaluation(
+        evaluation = MultiClassEvaluation(
             gt_file=eval_dataset,
             preds=preds,
             output_file=output_file,
             det_thresh=config_file.det_thresh,
             iou_thresh=0.5
         )
+
+    elif 'lymph' in args.dataset_file.lower():
+        evaluation = LymphocyteEvaluation(
+            gt_file=args.dataset_file,
+            output_file=output_file,
+            preds=preds,
+            det_thresh=config_file.det_thresh,
+            split=args.split
+        )
+
+    else:
+        raise ValueError(f'Unrecognized dataset: {args.dataset_file}')
 
     # evaluate
     evaluation.evaluate()

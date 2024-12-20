@@ -15,6 +15,7 @@ from sklearn.neighbors import KDTree
 from typing import Any, Dict, Tuple
 from torchvision.ops import box_iou
 
+from evalutils.scorers import score_detection
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from .map_by_distance import MAPbyDistance
 
@@ -149,16 +150,93 @@ def _F1_core_iou(
 #     return F1, TP, FP, FN
 
 
-def _F1_core_kdtree(
+# def _F1_core_kdtree(
+#     annos: np.ndarray, 
+#     boxes: np.ndarray, 
+#     scores: np.ndarray, 
+#     det_thresh: float, 
+#     radius: int = 25) -> Tuple[float, int, int, int]:
+#     """Computes F1 score for a given set of annotations and detections.
+
+#     Args:
+#         annos (np.ndarray): array of center coordinates in the format [x,y].
+#         boxes (np.ndarray): predicted bounding boxes in the format [xmin,ymin,xmax,ymax].
+#         scores (np.ndarray): predicted scores.
+#         det_thresh (float): detection threshold.
+#         radius (int, optional): radius of kd-tree query. Defaults to 25.
+
+#     Returns:
+#         Tuple[float, int, int, int]: f1, tp, fp, fn.
+#     """
+#     keep = scores > det_thresh
+#     boxes = boxes[keep]
+
+#     cx = (boxes[:, 0] + boxes[:, 2]) / 2
+#     cy = (boxes[:, 1] + boxes[:, 3]) / 2
+
+#     isDet = np.zeros(boxes.shape[0] + annos.shape[0])
+#     isDet[0:boxes.shape[0]] = 1 
+
+#     if annos.shape[0] > 0:
+#             cx = np.hstack((cx, annos[:, 0]))
+#             cy = np.hstack((cy, annos[:, 1]))
+
+#     # set up kdtree 
+#     X = np.dstack((cx, cy))[0]
+
+#     if X.shape[0] == 0:
+#         return 0, 0, 0, 0
+
+#     try:
+#         tree = KDTree(X)
+#     except:
+#         print('Shape of X: ', X.shape)
+
+#     ind = tree.query_radius(X, r=radius)
+
+#     annotationWasDetected = {x: 0 for x in np.where(isDet==0)[0]}
+#     DetectionMatchesAnnotation = {x: 0 for x in np.where(isDet==1)[0]}
+
+#     # check: already used results
+#     alreadyused=[]
+#     for i in ind:
+#         if len(i) == 0:
+#             continue
+#         if np.any(isDet[i]) and np.any(isDet[i]==0):
+#             # at least 1 detection and 1 non-detection --> count all as hits
+#             for j in range(len(i)):
+#                 if not isDet[i][j]: # is annotation, that was detected
+#                     if i[j] not in annotationWasDetected:
+#                         print('Missing key ',j, 'in annotationWasDetected')
+#                         raise ValueError('Ijks')
+#                     annotationWasDetected[i[j]] = 1
+#                 else:
+#                     if i[j] not in DetectionMatchesAnnotation:
+#                         print('Missing key ',j, 'in DetectionMatchesAnnotation')
+#                         raise ValueError('Ijks')
+
+#                     DetectionMatchesAnnotation[i[j]] = 1
+
+#     TP = np.sum([annotationWasDetected[x]==1 for x in annotationWasDetected.keys()])
+#     FN = np.sum([annotationWasDetected[x]==0 for x in annotationWasDetected.keys()])
+
+#     FP = np.sum([DetectionMatchesAnnotation[x]==0 for x in DetectionMatchesAnnotation.keys()])
+#     F1 = 2*TP/(2*TP + FP + FN)
+
+#     return F1, TP, FP, FN
+
+
+
+def _F1_core_balltree(
     annos: np.ndarray, 
     boxes: np.ndarray, 
     scores: np.ndarray, 
     det_thresh: float, 
     radius: int = 25) -> Tuple[float, int, int, int]:
-    """Computes F1 score for a given set of annotations and detections.
+    """Computes F1, TP, FP, FN scores for a given set of annotations and detections.
 
     Args:
-        annos (np.ndarray): array of center coordinates in the format [x,y].
+        annos (np.ndarray): array of bounding box coordinates in the format [xmin,ymin,xmax,ymax].
         boxes (np.ndarray): predicted bounding boxes in the format [xmin,ymin,xmax,ymax].
         scores (np.ndarray): predicted scores.
         det_thresh (float): detection threshold.
@@ -167,62 +245,69 @@ def _F1_core_kdtree(
     Returns:
         Tuple[float, int, int, int]: f1, tp, fp, fn.
     """
+    # filter detections by threshold 
     keep = scores > det_thresh
     boxes = boxes[keep]
 
-    cx = (boxes[:, 0] + boxes[:, 2]) / 2
-    cy = (boxes[:, 1] + boxes[:, 3]) / 2
+    # compute scores
+    scores = score_detection(ground_truth=annos, predictions=boxes, radius=radius)
 
-    isDet = np.zeros(boxes.shape[0] + annos.shape[0])
-    isDet[0:boxes.shape[0]] = 1 
+    # extract scores
+    TP = scores.true_positives
+    FP = scores.false_positives
+    FN = scores.false_negatives
 
-    if annos.shape[0] > 0:
-            cx = np.hstack((cx, annos[:, 0]))
-            cy = np.hstack((cy, annos[:, 1]))
+    eps = 1e-12
 
-    # set up kdtree 
-    X = np.dstack((cx, cy))[0]
-
-    if X.shape[0] == 0:
-        return 0, 0, 0, 0
-
-    try:
-        tree = KDTree(X)
-    except:
-        print('Shape of X: ', X.shape)
-
-    ind = tree.query_radius(X, r=radius)
-
-    annotationWasDetected = {x: 0 for x in np.where(isDet==0)[0]}
-    DetectionMatchesAnnotation = {x: 0 for x in np.where(isDet==1)[0]}
-
-    # check: already used results
-    alreadyused=[]
-    for i in ind:
-        if len(i) == 0:
-            continue
-        if np.any(isDet[i]) and np.any(isDet[i]==0):
-            # at least 1 detection and 1 non-detection --> count all as hits
-            for j in range(len(i)):
-                if not isDet[i][j]: # is annotation, that was detected
-                    if i[j] not in annotationWasDetected:
-                        print('Missing key ',j, 'in annotationWasDetected')
-                        raise ValueError('Ijks')
-                    annotationWasDetected[i[j]] = 1
-                else:
-                    if i[j] not in DetectionMatchesAnnotation:
-                        print('Missing key ',j, 'in DetectionMatchesAnnotation')
-                        raise ValueError('Ijks')
-
-                    DetectionMatchesAnnotation[i[j]] = 1
-
-    TP = np.sum([annotationWasDetected[x]==1 for x in annotationWasDetected.keys()])
-    FN = np.sum([annotationWasDetected[x]==0 for x in annotationWasDetected.keys()])
-
-    FP = np.sum([DetectionMatchesAnnotation[x]==0 for x in DetectionMatchesAnnotation.keys()])
-    F1 = 2*TP/(2*TP + FP + FN)
+    # compute F1
+    F1 = (2 * TP) / ((2 * TP) + FP + FN + eps)
 
     return F1, TP, FP, FN
+
+
+
+
+def _F1_core_balltree_multiclass(
+    target_boxes: np.ndarray, 
+    target_labels: np.ndarray, 
+    pred_boxes: np.ndarray, 
+    pred_scores: np.ndarray, 
+    pred_labels: np.ndarray,
+    det_thresh: float,
+    radius: int = 25):
+    """_summary_
+
+    Args:
+        target_boxes (np.ndarray): _description_
+        target_labels (np.ndarray): _description_
+        pred_boxes (np.ndarray): _description_
+        pred_scores (np.ndarray): _description_
+        pred_labels (np.ndarray): _description_
+        det_thresh (float): _description_
+        radius (int, optional): _description_. Defaults to 25.
+
+    Returns:
+        _type_: _description_
+    """
+    f1_scores = {}
+
+    for lbl in np.unique(pred_labels):
+        lbl_annos = target_boxes[target_labels == lbl]
+        lbl_boxes = pred_boxes[pred_labels == lbl]
+        lbl_scores = pred_scores[pred_labels == lbl]
+
+        f1_score, tp, fp, fn = _F1_core_balltree(
+            lbl_annos,
+            lbl_boxes,
+            lbl_scores,
+            det_thresh,
+            radius=radius
+            )
+        
+        f1_scores[int(lbl)] = {'f1_score': f1_score, 'tp': tp, 'fp': fp, 'fn': fn}
+
+    return f1_scores
+    
 
 
 
@@ -308,10 +393,10 @@ def optimize_threshold(
             score = preds[resfile]['scores']
             
             # get annotations  
-            centers_DB = dataset[['x', 'y']].loc[dataset.filename == resfile].values
+            annos = dataset[['xmin', 'ymin', 'xmax', 'ymax']].loc[dataset.filename == resfile].values
 
             for det_thres in thresholds:
-                F1,TP,FP,FN = _F1_core_kdtree(centers_DB, boxes, score, det_thres)
+                F1,TP,FP,FN = _F1_core_balltree(annos, boxes, score, det_thres)
                 TPd[resfile] += [TP]
                 FPd[resfile] += [FP]
                 FNd[resfile] += [FN]
@@ -385,7 +470,7 @@ def optimize_multiclass_threshold(
             
             # get annotations  
             target_boxes = dataset[['xmin', 'ymin', 'xmax', 'ymax']].loc[dataset.filename == resfile].values
-            target_labels = dataset['label']
+            target_labels = dataset['label'].loc[dataset.filename == resfile].values
 
             for det_thres in thresholds:
                 class_results = _F1_core_multiclass(
@@ -551,8 +636,8 @@ class MIDOG2022Evaluation:
             mask = case_preds['labels'] == 0
 
             # compute scores
-            F1, tp, fp, fn = _F1_core_kdtree(
-                annos=case_targets,
+            F1, tp, fp, fn = _F1_core_balltree(
+                annos=[[x-bbox_radius, y-bbox_radius, x+bbox_radius, y+bbox_radius] for x, y in case_targets],
                 boxes=case_preds['boxes'][mask],
                 scores=case_preds['scores'][mask],
                 det_thresh=self.det_thresh,
@@ -739,14 +824,14 @@ class LymphocyteEvaluation:
             # mask = case_preds['labels'] == 1
 
             # compute scores
-            f1_scores = _F1_core_multiclass(
+            f1_scores = _F1_core_balltree_multiclass(
                 target_boxes=case_targets['boxes'],
                 target_labels=case_targets['labels'],
                 pred_boxes=case_preds['boxes'],
                 pred_scores=case_preds['scores'],
                 pred_labels=case_preds['labels'],
                 det_thresh=self.det_thresh,
-                iou_thresh=self.iou_thresh
+                radius=25
             )
 
             self._case_results[case] = f1_scores
@@ -822,9 +907,9 @@ class LymphocyteEvaluation:
                 fp += class_scores['fp']
                 fn += class_scores['fn']
 
-            aggregated_results[f"tumor_{tumor.replace(' ', '')}_micro_precision"] =  tp / (tp + fp + eps)
-            aggregated_results[f"tumor_{tumor.replace(' ', '')}_micro_recall"] =  tp / (tp + fn + eps)
-            aggregated_results[f"tumor_{tumor.replace(' ', '')}_micro_f1_score"] =  (2 * tp) / ((2 * tp) + fp + fn + eps)
+            aggregated_results[f"tumor_{tumor.replace(' ', '')}_precision"] =  tp / (tp + fp + eps)
+            aggregated_results[f"tumor_{tumor.replace(' ', '')}_recall"] =  tp / (tp + fn + eps)
+            aggregated_results[f"tumor_{tumor.replace(' ', '')}_f1_score"] =  (2 * tp) / ((2 * tp) + fp + fn + eps)
 
 
             # compute per tumor map 
@@ -845,8 +930,7 @@ class LymphocyteEvaluation:
 
 
 
-
-class AstmaEvaluation:
+class MultiClassEvaluation:
     def __init__(
             self,
             gt_file: Union[str, pd.DataFrame],
@@ -990,9 +1074,9 @@ class AstmaEvaluation:
         eps = 1e-6
 
         # calculate total micro averaged metrics 
-        aggregated_results['micro_precision'] = tp / (tp + fp + eps)
-        aggregated_results['micro_recall'] = tp / (tp + fn + eps)
-        aggregated_results['micro_f1_score'] = (2 * tp) / ((2 * tp) + fp + fn + eps)
+        aggregated_results['precision'] = tp / (tp + fp + eps)
+        aggregated_results['recall'] = tp / (tp + fn + eps)
+        aggregated_results['f1_score'] = (2 * tp) / ((2 * tp) + fp + fn + eps)
 
         # calculate map
         metrics = self.ap.compute()
@@ -1023,6 +1107,163 @@ class AstmaEvaluation:
     def evaluate(self, verbose: bool=False):
         self.score()
         self.save()
+
+
+
+
+
+class SingleClassEvaluation:
+    def __init__(
+            self,
+            gt_file: Union[str, pd.DataFrame],
+            preds: Dict[str, Dict[str, Any]],
+            output_file: str,
+            det_thresh: float,
+            radius: int = 25
+    ):
+        self.gt_file = gt_file
+        self.preds = preds
+        self.output_file = output_file
+        self.det_thresh = det_thresh 
+        self.radius = radius
+
+        self.load_gt()
+
+        self.ap = MAPbyDistance(radius=self.radius)
+
+
+    def load_gt(self) -> None:
+        """Load ground truth annotations and case to tumor dictionary."""
+
+        if isinstance(self.gt_file, str):
+            dataset = pd.read_csv(self.gt_file)
+        elif isinstance(self.gt_file, pd.DataFrame):
+            dataset = self.gt_file
+        else:
+            raise TypeError('Dataset must be either str or pd.Dataframe. Got {}'.format(type(self.gt_file)))
+        
+        gt = {}
+        for case_ in dataset.filename.unique():
+            boxes = dataset.query('filename == @case_')[['xmin', 'ymin', 'xmax', 'ymax']].to_numpy()
+            labels = dataset.query('filename == @case_')['label'].to_numpy()
+            centers = (boxes[:, [0, 2]] + boxes[:, [1, 3]]) / 2
+            gt[case_] = {'boxes': boxes, 'centers': centers, 'labels': labels}
+
+        self.gt = gt
+        self.classes = dataset['label'].unique().tolist()
+
+
+    @property
+    def _metrics(self) -> Dict:
+        """Returns the calculated case and aggregate results"""
+        return {
+            "case": self._case_results,
+            "aggregates": self._aggregate_results,
+        } 
+
+
+    def score(self) -> None:
+        """Computes case specific and aggregated results"""
+        
+        # init case specific results 
+        self._case_results = {}
+
+        for idx, case in enumerate(self.gt.keys()):
+            if case not in self.preds:
+                print('Warning: No prediction for file: ',case)
+                continue
+
+            # get case predictions
+            case_preds = self.preds[case]
+
+            # check for empty preds
+            if case_preds['boxes'].shape[0] == 0:
+                boxes = np.zeros((1, 4))
+                scores = np.zeros(1)
+                labels = np.zeros(1)
+            else:
+                boxes = case_preds['boxes']
+                labels = case_preds['labels']
+                scores = case_preds['scores']
+
+            preds_dict = {
+                'boxes': torch.tensor(boxes, dtype=torch.float),
+                'scores': torch.tensor(scores, dtype=torch.float),
+                'labels': torch.tensor(labels, dtype=torch.int)
+                }
+            
+            # get case targets 
+            case_targets = self.gt[case]
+
+            target_dict = {
+                'boxes': torch.tensor(case_targets['boxes'], dtype=torch.float),
+                'labels': torch.tensor(case_targets['labels'], dtype=torch.int)
+                }
+
+            # update ap metrics
+            self.ap.update([preds_dict], [target_dict])
+
+
+
+    	    # compute scores
+            f1_score, tp, fp, fn = _F1_core_balltree(
+                annos=case_targets['boxes'],
+                boxes=case_preds['boxes'],
+                scores=case_preds['scores'],
+                det_thresh=self.det_thresh,
+                radius=self.radius
+            )
+
+            self._case_results[case] =  {'tp': tp, 'fp': fp, 'fn': fn}
+
+        # compute aggregate results 
+        self._aggregate_results = self.score_aggregates()
+
+
+
+    def score_aggregates(self) -> Dict[str, float]:
+        """Computes aggregated results"""
+
+        # init total scores 
+        tp, fp, fn = 0, 0, 0
+
+        # accumulate case specific scores
+        for case, scores in self._case_results.items():
+            tp += scores['tp']
+            fp += scores['fp']
+            fn += scores['fn']
+
+        # init aggregated results
+        aggregated_results = {}
+        
+        eps = 1e-12
+
+        # calculate total micro averaged metrics 
+        aggregated_results['precision'] = tp / (tp + fp + eps)
+        aggregated_results['recall'] = tp / (tp + fn + eps)
+        aggregated_results['f1_score'] = (2 * tp) / ((2 * tp) + fp + fn + eps)
+
+        # calculate map
+        metrics = self.ap.compute()
+        aggregated_results['AP'] = metrics.map.item()
+
+        return aggregated_results
+
+
+    def save(self):
+        with open(self.output_file, "w") as f:
+                    f.write(json.dumps(self._metrics, cls=NpEncoder))  
+    
+
+    def evaluate(self, verbose: bool=False):
+        self.score()
+        self.save()
+
+
+
+
+
+
 
 
 

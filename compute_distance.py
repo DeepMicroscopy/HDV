@@ -63,7 +63,7 @@ def main(args):
     if 'cells' in args.dataset_file:
         # load test slide 
         _, test_dataset, _ = load_astma_df(args.dataset_file)
-    elif 'midog' in args.dataset_file.lower():
+    elif 'midog' in args.dataset_file.lower() or 'lymph' in args.dataset_file.lower():
         dataset = pd.read_csv(args.dataset_file)
         # filter eval samples 
         test_dataset = dataset.query('split == "test"')

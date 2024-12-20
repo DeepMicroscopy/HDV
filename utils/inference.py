@@ -137,7 +137,6 @@ class Yolov7_Inference(Strategy):
         return {'boxes': boxes, 'scores': scores, 'labels': labels}
 
 
-
 # ---------------------------------------------------------------------------------------------- 
 # Region of intereset inference dataset using PIL ----------------------------------------------
 # ----------------------------------------------------------------------------------------------
@@ -339,6 +338,83 @@ class WSI_InferenceDataset(Dataset):
         images, x_coords, y_coords = zip(*batch)
         images = torch.stack(images, dim=0)
         return images, x_coords, y_coords
+    
+
+# ---------------------------------------------------------------------------------------------- 
+# Patch inference dataset using PIL ----------------------------------------------
+# ----------------------------------------------------------------------------------------------
+
+
+class Patch_InferenceDataset(Dataset):
+    def __init__(
+            self, 
+            image_dir: Union[str, Path],
+            size: int=1280, 
+    ) -> None:
+        self.image_dir = Path(image_dir)
+        self.size = size
+        
+        self.filenames = list(self.image_dir.iterdir())
+    
+
+    def __len__(self) -> int:
+        return len(self.filenames)
+    
+
+    def __getitem__(self, index) -> Tuple[torch.Tensor, int, int]:
+        filename = self.filenames[index]
+        image = Image.open(filename).convert('RGB')
+         
+        # create a blank (white) 1280x1280 image
+        new_size = (self.size, self.size)
+        background = Image.new('RGB', new_size, (255, 255, 255)) 
+
+        # paste the 1024x1024 patch in the center of the 1280x1280 image
+        background.paste(image, ((new_size[0] - 1024) // 2, (new_size[1] - 1024) // 2))
+        background = np.array(background)
+        
+        patch = torch.from_numpy(background / 255.).permute(2, 0, 1).type(torch.float32) 
+        return patch, filename
+    
+
+    @staticmethod
+    def collate_fn(batch) -> Tuple[torch.Tensor, List[int], List[int]]:
+        images, filenames = zip(*batch)
+        images = torch.stack(images, dim=0)
+        return images, filenames
+    
+    
+    
+def adjust_bounding_boxes(detections, pad_size=128):
+    """
+    Adjust bounding boxes from the 1280x1280 space to 1024x1024 space.
+    
+    Args:
+    detections (Tensor or List[Tuple]): Bounding boxes or detection coordinates.
+    pad_size (int): Amount of padding added on each side (128 pixels for 1280x1280 to 1024x1024).
+    
+    Returns:
+    adjusted_boxes: Adjusted bounding boxes.
+    """
+    adjusted_boxes = []
+    for box in detections:
+        # adjust box coordinates by subtracting padding
+        x_min = box[0] - pad_size
+        y_min = box[1] - pad_size
+        x_max = box[2] - pad_size
+        y_max = box[3] - pad_size
+        
+        # clip the boxes to be within the original 1024x1024 dimensions
+        x_min = max(0, x_min)
+        y_min = max(0, y_min)
+        x_max = min(1024, x_max)
+        y_max = min(1024, y_max)
+        
+        adjusted_boxes.append([x_min, y_min, x_max, y_max])
+    
+    return adjusted_boxes
+
+ 
 
 
 # ---------------------------------------------------------------------------------------------- 

@@ -36,7 +36,12 @@ from utils.plots import plot_images, plot_labels, plot_results, plot_evolution
 from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_distributed_zero_first, is_parallel
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 
-from utils.dataset_adaptors import create_midog_dataloader, create_astma_dataloader
+from utils.dataset_adaptors import (
+    create_midog_dataloader, 
+    create_midog_subtyping_dataloader,
+    create_astma_dataloader,
+    create_lymph_dataloader
+)
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +267,21 @@ def train(hyp, opt, device, tb_writer=None):
             rank=rank
             )
         
+    elif 'subtyping' in opt.data:
+        # create midog train loader and dataset 
+        dataloader, dataset = create_midog_subtyping_dataloader(
+            split=train_path, 
+            batch_size=batch_size,
+            img_dir_path=opt.img_dir,
+            dataset_file_path=opt.dataset, 
+            patch_size=imgsz,
+            num_samples=opt.num_samples,
+            sampling_strategy=opt.sampling_strategy,
+            workers=opt.workers,
+            world_size=opt.world_size,
+            rank=rank
+            )
+        
     elif 'astma' in opt.data:
 
         dataloader, dataset = create_astma_dataloader(
@@ -275,6 +295,21 @@ def train(hyp, opt, device, tb_writer=None):
             world_size=opt.world_size,
             rank=rank
         )
+
+    elif 'lymph' in opt.data:
+        
+        dataloader, dataset = create_lymph_dataloader(
+            split=train_path,
+            batch_size=batch_size,
+            img_dir_path=opt.img_dir,
+            dataset_file_path=opt.dataset,
+            patch_size=imgsz,
+            num_samples=opt.num_samples,
+            workers=opt.workers,
+            world_size=opt.world_size,
+            rank=rank
+        )
+
 
     else:
         # Trainloader
@@ -305,10 +340,40 @@ def train(hyp, opt, device, tb_writer=None):
                 world_size=opt.world_size,
                 rank=rank
                 )
+            
+        elif 'subtyping' in opt.data:
+            # create midog train loader and dataset 
+            testloader, testdataset = create_midog_subtyping_dataloader(
+                split=test_path, 
+                batch_size=batch_size * 2,
+                img_dir_path=opt.img_dir,
+                dataset_file_path=opt.dataset, 
+                patch_size=imgsz,
+                num_samples=opt.num_samples,
+                sampling_strategy=opt.sampling_strategy,
+                workers=opt.workers,
+                world_size=opt.world_size,
+                rank=rank
+                )
         
         elif 'astma' in opt.data:
 
             testloader, testdataset = create_astma_dataloader(
+                split=test_path,
+                batch_size=batch_size * 2,
+                img_dir_path=opt.img_dir,
+                dataset_file_path=opt.dataset,
+                patch_size=imgsz,
+                num_samples=opt.num_samples,
+                workers=opt.workers,
+                world_size=opt.world_size,
+                rank=rank
+            )
+
+
+        elif 'lymph' in opt.data:
+            
+            testloader, testdataset = create_lymph_dataloader(
                 split=test_path,
                 batch_size=batch_size * 2,
                 img_dir_path=opt.img_dir,
@@ -376,7 +441,7 @@ def train(hyp, opt, device, tb_writer=None):
         model.train()
 
 
-        if 'midog' in opt.data or 'astma' in opt.data:
+        if 'midog' in opt.data or 'astma' in opt.data or 'subtyping' in opt.data or 'lymph' in opt.data:
             # Trainloader
             dataset.create_new_samples()
             nw = min([os.cpu_count() // opt.world_size, batch_size if batch_size > 1 else 0, opt.workers])  # number of workers

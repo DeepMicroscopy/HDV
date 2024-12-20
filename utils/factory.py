@@ -111,6 +111,7 @@ class Yolov7_Config(ModelConfig):
 
 CONFIG_MAPPING = {
         'yolov7': Yolov7_Config,
+        'yolov7_d6': Yolov7_Config,
     }
 
 
@@ -159,6 +160,7 @@ class ConfigCreator:
 
 MODEL_MAPPINGS = {
         'yolov7': make_yolov7_model, 
+        'yolov7_d6': make_yolov7_model
     }
 
 

@@ -1,0 +1,19 @@
+# MIDOG 2022 dataset 
+
+# select splits
+train: train
+val: val
+test: test
+
+# number of classes
+nc: 3
+
+# class names
+names: [
+ 'Other cell',
+ 'Tumor cell',
+ 'CD3+ immune cell'
+ ]
+
+
+

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from utils.factory import ConfigCreator, ModelFactory
 from utils.inference import Yolov7_Inference, ImageProcessor
 from utils.evaluation import optimize_threshold, optimize_multiclass_threshold
-from utils.dataset_adaptors import load_astma_df
+from utils.dataset_adaptors import load_astma_df, load_midog_subtyping_df, load_lymph_df
 
 
 # set default parameters
@@ -129,6 +129,10 @@ def main(args):
         dataset = pd.read_csv(args.dataset_file)
         # filter eval samples 
         valid_dataset = dataset.query('split == @args.split')
+    elif 'subtyping' in args.dataset_file.lower():
+        _, valid_dataset, _ = load_midog_subtyping_df(args.dataset_file)
+    elif 'lymph' in args.dataset_file.lower():
+        _, valid_dataset, _ = load_lymph_df(args.dataset_file)
     else:
         raise ValueError(f'Unsupported dataset file {args.dataset_file}')
     print('Done.')
@@ -177,7 +181,7 @@ def main(args):
             preds=preds,
             minthres=args.min_thresh
         )
-    elif 'cells' in args.dataset_file.lower():
+    elif 'cells' in args.dataset_file.lower() or 'subtyping' in args.dataset_file.lower() or 'lymph' in args.dataset_file.lower():
 
         bestThres, bestF1, allF1, allThres = optimize_multiclass_threshold(
             dataset=valid_dataset,
@@ -186,15 +190,15 @@ def main(args):
             iou_thresh=0.5
         )
 
-    # reduce threshold to be more sensitive on ood data
-    propThres = np.round(bestThres - bestThres * 0.1, decimals=3)
-    propF1 = allF1[np.where(allThres == propThres)].item()
+    # # reduce threshold to be more sensitive on ood data
+    # propThres = np.round(bestThres - bestThres * 0.1, decimals=3)
+    # propF1 = allF1[np.where(allThres == propThres)].item()
 
-    print(f'Proposed threshold: F1={propF1:.4f}, Threshold={propThres:.2f}')
+    # print(f'Proposed threshold: F1={propF1:.4f}, Threshold={propThres:.2f}')
 
     print('Updating model configs with optimized threshold ...', end=' ')
     # updating model configs
-    config_file.update({'det_thresh': float(np.round(propThres, decimals=3))})
+    config_file.update({'det_thresh': float(np.round(bestThres, decimals=3))})
 
     if args.config_file is None:
         # save model configs
