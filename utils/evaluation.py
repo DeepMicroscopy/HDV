@@ -424,7 +424,7 @@ def optimize_threshold(
         allF1[k] = 2*allTP[k] / (2*allTP[k] + allFP[k] + allFN[k])
         allF1M[k] = np.mean([F1d[x][k] for x in preds])
 
-    print(f'Best threshold: F1={np.max(allF1):.4f}, Threshold={thresholds[np.argmax(allF1)]:.2f}')
+    print(f'Best threshold: F1={np.max(allF1):.4f}, Threshold={thresholds[np.argmax(allF1)]:.3f}')
 
     return thresholds[np.argmax(allF1)], np.max(allF1), allF1, thresholds
 
@@ -523,7 +523,7 @@ def optimize_multiclass_threshold(
         allFN[k] = np.sum([FNd[x][k] for x in preds])
         allF1[k] = 2*allTP[k] / (2*allTP[k] + allFP[k] + allFN[k])
 
-    print(f'Best threshold: F1={np.max(allF1):.4f}, Threshold={thresholds[np.argmax(allF1)]:.2f}')
+    print(f'Best threshold: F1={np.max(allF1):.4f}, Threshold={thresholds[np.argmax(allF1)]:.3f}')
 
     return thresholds[np.argmax(allF1)], np.max(allF1), allF1, thresholds   
 

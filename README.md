@@ -22,8 +22,12 @@ A demo to construct the metrics on the official MIDOG 2022 training set will be 
 
 ## Getting started
 
-All requirements needed to run the scripts in this repository can be installed using pip:
+Run the following code and check out the `MIDOGpp_demo.ipynb`. Installing all the dependencies may take a while. 
 
-```pip install -r requirements.txt```
+```
+python -m venv demo_env
+source demo_env/bin/activate
+pip install -r requirements.txt
+```
 
 ## Citation

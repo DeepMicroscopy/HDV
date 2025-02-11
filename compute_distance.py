@@ -26,7 +26,7 @@ METRIC = 'hdv'
 METHOD = 'autohist'
 AGGREGATION = 'mean'
 SPLIT = 'test'
-C = None
+C = 100
 
 def get_args():
     parser = argparse.ArgumentParser()

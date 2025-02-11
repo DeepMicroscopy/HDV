@@ -5,11 +5,12 @@ import numpy as np
 import pprint
 
 from tqdm import tqdm 
+from pathlib import Path
 
 from utils.factory import ConfigCreator, ModelFactory
 from utils.inference import Yolov7_Inference, ImageProcessor
 from utils.evaluation import optimize_threshold, optimize_multiclass_threshold
-from utils.dataset_adaptors import load_astma_df, load_midog_subtyping_df, load_lymph_df
+from utils.dataset_adaptors import load_astma_df, load_midog_subtyping_df, load_lymph_df, load_midog_df
 
 
 # set default parameters
@@ -17,7 +18,7 @@ BATCH_SIZE = 8
 CONFIG_FILE = None
 CONFIG_PATH = 'optimized_models/'
 DATASET_FILE = 'annotations/MIDOG2022_training.csv'
-DETECTOR = 'Yolov7'
+DETECTOR = 'yolov7'
 DET_THRESH = 0.05
 DEVICE = 'cuda:0'
 IMG_DIR = '/data/patho/MIDOG2/'
@@ -32,7 +33,6 @@ OVERLAP = 0.3
 PATCH_SIZE = 1280
 TUMOR_ID = None
 VERBOSE = False
-WEIGHTS = '/home/ammeling/projects/Bhattacharyya/lymph/checkpoints/LitFCOS_all_ada_0_epoch78_val_ap_0.84.ckpt'
 SPLIT = 'val'
 
 
@@ -58,7 +58,7 @@ def get_args():
     parser.add_argument("--patch_size",     type=int, default=PATCH_SIZE, help="Patch size.")
     parser.add_argument("--tumor_id",       type=str, default=TUMOR_ID, help="Which tumor type to use for optimizing threshold.")
     parser.add_argument("--verbose",        action="store_true", help="If True, prints pbar for each image.")
-    parser.add_argument("--weights",        type=str, default=WEIGHTS, help="Path to model checkpoint.")
+    parser.add_argument("--weights",        type=str, help="Path to model checkpoint.")
     parser.add_argument("--wsi",            action="store_true", help="Processes WSI")
     parser.add_argument("--split",          type=str, default=SPLIT, help="Data split to evaluate.")
     return parser.parse_args()
@@ -67,6 +67,9 @@ def get_args():
 def main(args):
 
     if args.config_file is None:
+
+        if not Path(args.weights).exists():
+            raise FileNotFoundError(f'Cannot find weights: {args.weights}.')
 
         # get model configs
         settings = {
@@ -126,9 +129,7 @@ def main(args):
         # load test slide 
         valid_dataset, _, _ = load_astma_df(args.dataset_file)
     elif 'midog' in args.dataset_file.lower():
-        dataset = pd.read_csv(args.dataset_file)
-        # filter eval samples 
-        valid_dataset = dataset.query('split == @args.split')
+        _, valid_dataset, _ = load_midog_df(args.dataset_file)
     elif 'subtyping' in args.dataset_file.lower():
         _, valid_dataset, _ = load_midog_subtyping_df(args.dataset_file)
     elif 'lymph' in args.dataset_file.lower():
@@ -172,8 +173,8 @@ def main(args):
             continue 
 
     if 'midog' in args.dataset_file.lower():
-        # optimize threshold
-        valid_dataset = valid_dataset.query('label == 1')
+        # select MF only 
+        valid_dataset = valid_dataset.query('label == 0')
 
         # optimize threshold
         bestThres, bestF1, allF1, allThres = optimize_threshold(
@@ -183,6 +184,7 @@ def main(args):
         )
     elif 'cells' in args.dataset_file.lower() or 'subtyping' in args.dataset_file.lower() or 'lymph' in args.dataset_file.lower():
 
+        # optimize multiclass threshold
         bestThres, bestF1, allF1, allThres = optimize_multiclass_threshold(
             dataset=valid_dataset,
             preds=preds,
@@ -193,12 +195,11 @@ def main(args):
     # # reduce threshold to be more sensitive on ood data
     # propThres = np.round(bestThres - bestThres * 0.1, decimals=3)
     # propF1 = allF1[np.where(allThres == propThres)].item()
-
     # print(f'Proposed threshold: F1={propF1:.4f}, Threshold={propThres:.2f}')
 
-    print('Updating model configs with optimized threshold ...', end=' ')
     # updating model configs
     config_file.update({'det_thresh': float(np.round(bestThres, decimals=3))})
+    print(f'Updated model configs with optimized threshold: {float(np.round(bestThres, decimals=3))}')
 
     if args.config_file is None:
         # save model configs
@@ -206,7 +207,6 @@ def main(args):
         config_file.save(save_path)
     else:
         config_file.save(args.config_file)
-        print('Done.')
 
 
 

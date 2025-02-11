@@ -14,10 +14,7 @@ from utils.dataset_adaptors import load_astma_df
 
 
 BATCH_SIZE = 8
-CONFIG_FILE = 'optimized_models/yolov7_d6_ALL_0.yaml'
-DATASET_FILE = 'annotations/midog_2022_test.csv'
 DEVICE = 'cuda'
-IMG_DIR = '/data/patho/MIDOG2/finalTest'
 DET_THRESH = 0.05
 IOU_THRESH_1 = 0.7
 IOU_THRESH_2 = 0.3
@@ -38,10 +35,10 @@ def get_args():
     parser.add_argument("--batch_size",     type=int, default=BATCH_SIZE, help="Batch size.")
     parser.add_argument("--iou_thres_1",    type=float, default=IOU_THRESH_1, help="IOU threshold for patch-wise evaluation.")
     parser.add_argument("--iou_thres_2",    type=float, default=IOU_THRESH_2, help="IOU threshold for final evaluation.")
-    parser.add_argument("--config_file",    type=str, default=CONFIG_FILE, help='Model configurations.')
-    parser.add_argument("--dataset_file",   type=str, default=DATASET_FILE, help="Dataset filepath.")
+    parser.add_argument("--config_file",    type=str, help='Model configurations.')
+    parser.add_argument("--dataset_file",   type=str, help="Dataset filepath.")
     parser.add_argument("--device",     	type=str, default=DEVICE, help="Device.")
-    parser.add_argument("--img_dir",        type=str, default=IMG_DIR, help="Image directory.")
+    parser.add_argument("--img_dir",        type=str, help="Image directory.")
     parser.add_argument("--num_workers",    type=int, default=NUM_WORKERS, help="Number of processes.")
     parser.add_argument("--output_file",    type=str, default=OUTPUT_FILE, help="Filename to save results. (Default: None) Created from Config file.")
     parser.add_argument("--overlap",        type=float, default=OVERLAP, help="Overlap between patches.")
@@ -57,6 +54,12 @@ def get_args():
 
 
 def main(args):
+
+    if not Path(args.config_file).exists():
+        raise FileNotFoundError(f'Cannot find config file: {args.config_file}.')
+    
+    if not Path(args.dataset_file).exists():
+        raise FileNotFoundError(f'Cannot find dataset file: {args.dataset_file}.')
     
     print('Initializing model ...', end=' ')
     # load model config

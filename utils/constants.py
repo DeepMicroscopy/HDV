@@ -6,7 +6,7 @@ Some constants to visualize distance metrics
 
 """
 
-# Dataset codes ----------------------------------------------------------------------------- 
+# Dataset codes (MIDOG 2025 Test Set) ----------------------------------------------------------------------------- 
 
 MIDOG_ABBREVATIONS = {
     0: 'HMEL',
