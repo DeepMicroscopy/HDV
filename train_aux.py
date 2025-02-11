@@ -40,7 +40,8 @@ from utils.dataset_adaptors import (
     create_midog_dataloader, 
     create_midog_subtyping_dataloader,
     create_astma_dataloader,
-    create_lymph_dataloader
+    create_lymph_dataloader,
+    create_midog_atypical_dataloader
 )
 
 logger = logging.getLogger(__name__)
@@ -266,7 +267,24 @@ def train(hyp, opt, device, tb_writer=None):
             world_size=opt.world_size,
             rank=rank
             )
-        
+
+            
+    elif 'atypical' in opt.data:
+        # create midog train loader and dataset 
+        dataloader, dataset = create_midog_atypical_dataloader(
+            split=train_path, 
+            batch_size=batch_size,
+            img_dir_path=opt.img_dir,
+            dataset_file_path=opt.dataset, 
+            patch_size=imgsz,
+            num_samples=opt.num_samples,
+            sampling_strategy=opt.sampling_strategy,
+            workers=opt.workers,
+            world_size=opt.world_size,
+            rank=rank
+            )
+
+
     elif 'subtyping' in opt.data:
         # create midog train loader and dataset 
         dataloader, dataset = create_midog_subtyping_dataloader(
@@ -336,6 +354,22 @@ def train(hyp, opt, device, tb_writer=None):
                 sampling_strategy=opt.sampling_strategy,
                 fg_prob=opt.fg_prob,
                 arb_prob=opt.arb_prob,
+                workers=opt.workers,
+                world_size=opt.world_size,
+                rank=rank
+                )
+            
+
+        elif 'atypical' in opt.data:
+            # create midog train loader and dataset 
+            testloader, testdataset = create_midog_atypical_dataloader(
+                split=test_path, 
+                batch_size=batch_size * 2,
+                img_dir_path=opt.img_dir,
+                dataset_file_path=opt.dataset, 
+                patch_size=imgsz,
+                num_samples=opt.num_samples,
+                sampling_strategy=opt.sampling_strategy,
                 workers=opt.workers,
                 world_size=opt.world_size,
                 rank=rank

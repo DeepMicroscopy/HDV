@@ -466,6 +466,48 @@ def load_midog_subtyping_df(annotations_file_path: str, box_size: int=50) -> Tup
 
 
 
+def load_midog_atypical_df(annotations_file_path: str, box_size: int=50) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    
+    # read dataset file 
+    df = pd.read_csv(annotations_file_path)
+
+    # make midog annotations zero-indexed for YOLOv7
+    df['label'] = df['label'] - 1
+
+    # convert annotations from x, y to xmin, ymin, xmax, ymax
+    df['xmin'] = df['x'] - box_size * 0.5
+    df['xmax'] = df['x'] + box_size * 0.5
+    df['ymin'] = df['y'] - box_size * 0.5
+    df['ymax'] = df['y'] + box_size * 0.5
+
+    # create lookups
+    class_id_to_label = {
+        -1: 'NMF',
+        0: 'MF',
+        1: 'AMF',
+    }
+    class_label_to_id = {v: k for k, v in class_id_to_label.items()}
+    domain_id_to_label = dict(enumerate(df.tumortype.unique()))
+    domain_label_to_id = {v: k for k, v in domain_id_to_label.items()}
+
+    # add domain ids
+    df['tumortype'] = df.tumortype.map(domain_label_to_id)
+
+    # create splits 
+    train_df = df.query('split == "train"')
+    valid_df = df.query('split == "val"')
+
+    lookups = {
+        'class_id_to_label': class_id_to_label,
+        'class_label_to_id': class_label_to_id,
+        'domain_id_to_label': domain_id_to_label,
+        'domain_label_to_id': domain_label_to_id
+    }
+
+    return train_df, valid_df, lookups
+
+
+
 class MidogSubtypingAdaptor(Dataset):
     def __init__(
             self,
@@ -914,6 +956,64 @@ def create_midog_dataloader(
     
     return dataloader, dataset 
 
+
+
+def create_midog_atypical_dataloader(
+        split: str,
+        batch_size: int, 
+        img_dir_path: str, 
+        dataset_file_path: str, 
+        patch_size: int = 1280,
+        num_samples: int = 1024,
+        sampling_strategy: str = 'domain_based',
+        workers: int = 8,
+        world_size: int = 1,
+        rank: int = -1
+):
+    
+    with torch_distributed_zero_first(rank):
+        
+        # load data
+        train_df, valid_df, _ = load_midog_atypical_df(dataset_file_path)
+
+        # create midog adaptors
+        if split == 'train':
+            dataset = MidogSubtypingAdaptor(
+                split='train',
+                img_dir_path=img_dir_path, 
+                dataset=train_df, 
+                num_samples=num_samples, 
+                patch_size=patch_size,
+                sampling_strategy=sampling_strategy,
+                transforms=create_midog_transforms()
+            )
+        elif split == 'val':
+            dataset = MidogSubtypingAdaptor(
+                split='val',
+                img_dir_path=img_dir_path, 
+                dataset=valid_df, 
+                num_samples=num_samples, 
+                patch_size=patch_size,
+                sampling_strategy=sampling_strategy,
+            )
+        else:
+            raise ValueError(f'Unrecognized split: {split}.')
+
+        # create yolo datasets
+        dataset = Yolov7Dataset(dataset, patch_size=patch_size)   
+
+    # create dataloader 
+    batch_size = min(batch_size, len(dataset))
+    nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
+    sampler = DistributedSampler(dataset) if rank != -1 else None
+    dataloader = DataLoader(dataset,
+                        batch_size=batch_size,
+                        num_workers=nw,
+                        sampler=sampler,
+                        pin_memory=False,  # was true
+                        collate_fn=dataset.yolov7_collate_fn)
+    
+    return dataloader, dataset 
 
 
 

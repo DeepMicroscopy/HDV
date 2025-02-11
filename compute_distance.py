@@ -14,11 +14,8 @@ from utils.gdv import domain_specific_gdv
 from utils.factory import ConfigCreator
 from utils.dataset_adaptors import load_astma_df
 
-CONFIG_FILE = 'optimized_models/yolov7_d6_ALL_0.yaml'
-DATASET_FILE = 'annotations/midog_2022_test.csv'
-IMG_DIR = '/data/patho/MIDOG2/finalTest'
+
 SAVE_DIR= 'results/'
-FEATURE_DIR = '/data/jonas/midog/features'
 ONLY_BORDER = False
 BOX_FORMAT = 'cxcy'
 DOMAIN_COL = 'tumortype'
@@ -30,12 +27,12 @@ C = 100
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_file",      type=str, default=CONFIG_FILE, help='Model configurations.')
+    parser.add_argument("--config_file",      type=str, help='Model configurations.')
     parser.add_argument("--box_format",       type=str, default=BOX_FORMAT, help='Box format (default: cxcy).')
-    parser.add_argument("--dataset_file",     type=str, default=DATASET_FILE, help="Dataset filepath.")
-    parser.add_argument("--img_dir",          type=str, default=IMG_DIR, help="Image directory.")
+    parser.add_argument("--dataset_file",     type=str, help="Dataset filepath.")
+    parser.add_argument("--img_dir",          type=str, help="Image directory.")
     parser.add_argument("--save_dir",         type=str, default=SAVE_DIR, help="Location to save bhatta results.")
-    parser.add_argument("--feature_dir",      type=str, default=FEATURE_DIR, help="Location of features and targets.")
+    parser.add_argument("--feature_dir",      type=str, help="Location of features and targets.")
     parser.add_argument("--only_border",      action="store_true", help="Extracts only features from border cases.")
     parser.add_argument("--domain_col",       type=str, default=DOMAIN_COL, help="Column with different domains, e.g. tumortypes (default: tumor_id).")
     parser.add_argument("--metric",           type=str, default=METRIC, help="Metric to compute.")

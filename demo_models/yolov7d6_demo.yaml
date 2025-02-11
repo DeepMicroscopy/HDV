@@ -1,0 +1,6 @@
+cfg: cfg/training/yolov7-d6-midog.yaml
+det_thresh: 0.452
+detector: yolov7_d6
+model_name: yolov7d6_demo
+num_classes: 1
+weights: runs/train/yolov7d6_demo/weights/best.pt

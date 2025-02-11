@@ -10,7 +10,13 @@ from pathlib import Path
 from utils.factory import ConfigCreator, ModelFactory
 from utils.inference import Yolov7_Inference, ImageProcessor
 from utils.evaluation import optimize_threshold, optimize_multiclass_threshold
-from utils.dataset_adaptors import load_astma_df, load_midog_subtyping_df, load_lymph_df, load_midog_df
+from utils.dataset_adaptors import (
+    load_astma_df, 
+    load_midog_subtyping_df, 
+    load_lymph_df, 
+    load_midog_df,
+    load_midog_atypical_df
+    )
 
 
 # set default parameters
@@ -70,6 +76,10 @@ def main(args):
 
         if not Path(args.weights).exists():
             raise FileNotFoundError(f'Cannot find weights: {args.weights}.')
+        
+        if not Path(args.config_path).exists():
+            Path(args.config_path).mkdir(parents=True)
+
 
         # get model configs
         settings = {
@@ -132,6 +142,8 @@ def main(args):
         _, valid_dataset, _ = load_midog_df(args.dataset_file)
     elif 'subtyping' in args.dataset_file.lower():
         _, valid_dataset, _ = load_midog_subtyping_df(args.dataset_file)
+    elif 'atypical' in args.dataset_file.lower():
+        _, valid_dataset, _ = load_midog_atypical_df(args.dataset_file)
     elif 'lymph' in args.dataset_file.lower():
         _, valid_dataset, _ = load_lymph_df(args.dataset_file)
     else:
@@ -182,7 +194,7 @@ def main(args):
             preds=preds,
             minthres=args.min_thresh
         )
-    elif 'cells' in args.dataset_file.lower() or 'subtyping' in args.dataset_file.lower() or 'lymph' in args.dataset_file.lower():
+    else:
 
         # optimize multiclass threshold
         bestThres, bestF1, allF1, allThres = optimize_multiclass_threshold(

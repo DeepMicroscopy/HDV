@@ -108,6 +108,10 @@ def main(args):
         dataset = pd.read_csv(args.dataset_file)
         # filter eval samples 
         eval_dataset = dataset.query('split == @args.split')
+    elif 'atypical' in args.dataset_file.lower():
+        dataset = pd.read_csv(args.dataset_file)
+        # filter eval samples and ignore imposter 
+        eval_dataset = dataset.query('split == @args.split & label > 1')
     else:
         raise ValueError(f'Unsupported dataset file {args.dataset_file}')
     print('Done.')
@@ -155,7 +159,7 @@ def main(args):
             det_thresh=config_file.det_thresh,
             split=args.split
         )
-    elif 'cells' in args.dataset_file.lower():
+    elif 'cells' in args.dataset_file.lower() or 'atypical' in args.dataset_file.lower():
         evaluation = MultiClassEvaluation(
             gt_file=eval_dataset,
             preds=preds,

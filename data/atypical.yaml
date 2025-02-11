@@ -1,0 +1,12 @@
+# MIDOG 2022 Subtyping dataset 
+
+# select splits
+train: train
+val: val
+test: test
+
+# number of classes
+nc: 2
+
+# class names
+names: ['MF', 'Atypical MF']
