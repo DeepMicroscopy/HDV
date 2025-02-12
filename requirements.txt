@@ -3,6 +3,7 @@ astropy
 coremltools
 evalutils
 ipykernel
+kaleido
 matplotlib
 numpy
 onnx
