@@ -111,7 +111,7 @@ def main(args):
     elif 'atypical' in args.dataset_file.lower():
         dataset = pd.read_csv(args.dataset_file)
         # filter eval samples and ignore imposter 
-        eval_dataset = dataset.query('split == @args.split & label > 1')
+        eval_dataset = dataset.query('split == @args.split & label > 0') # in our atypical dataset labels are 0:NMF, 1:MF, 2:MF
     else:
         raise ValueError(f'Unsupported dataset file {args.dataset_file}')
     print('Done.')

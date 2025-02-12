@@ -13,6 +13,7 @@ openslide-python
 pafy
 pandas
 Pillow
+plotly
 pycocotools
 PyYAML
 requests
@@ -20,6 +21,7 @@ scikit-learn
 scipy
 seaborn
 setuptools
+statsmodels
 thop
 tiatoolbox
 torch
