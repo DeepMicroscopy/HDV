@@ -17,8 +17,6 @@ This repository contains the code to generate the metrics presented in our paper
 - `extract_features.py` contains the code to extract the features from the datasets used in our study.
 - `compute_distance.py` contains the code to construct the separability metrics.
 
-A demo to construct the metrics on the official MIDOG 2022 training set will be available soon. 
-
 
 ## Getting started
 
