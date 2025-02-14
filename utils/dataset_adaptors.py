@@ -519,6 +519,8 @@ class MidogSubtypingAdaptor(Dataset):
             domain_col: str = 'tumortype',
             label_col: str = 'label',
             sampling_strategy: str = 'domain_based',
+            fg_prob: float = 0.5,
+            arb_prob: float = 0.25,
             level: int = 0,
             split: str = None, 
             transforms: Callable = None
@@ -534,6 +536,8 @@ class MidogSubtypingAdaptor(Dataset):
         self.level = level
         self.transforms = transforms
         self.split = split 
+        self.fg_prob = fg_prob
+        self.arb_prob = arb_prob
 
 
         if self.filename_col not in self.dataset.columns:
@@ -627,7 +631,7 @@ class MidogSubtypingAdaptor(Dataset):
         # get training samples 
         samples = dict()
         for sample_id, slide_id in enumerate(slide_ids):
-            samples[sample_id] = self.sample_coords(slide_id)
+            samples[sample_id] = self.sample_coords(slide_id, self.fg_prob, self.arb_prob)
 
         # store samples 
         self.samples = samples 
@@ -671,12 +675,12 @@ class MidogSubtypingAdaptor(Dataset):
             raise ValueError(f'Unsupported sampling strategy: {self.sampling_strategy}. Use onf of [default, domain_absed]')
         
 
-    def sample_coords(self, slide_id: int) -> Dict[int, Coords]:
+    def sample_coords(self, slide_id: int, fg_prob: float=None, arb_prob: float=None) -> Dict[int, Coords]:
         """Method to sample patch coordinates from a slide."""
 
         # set sampling probabilities
-        fg_prob = 0.5
-        arb_prob = 0.25
+        fg_prob = self.fg_prob if fg_prob is None else fg_prob
+        arb_prob = self.arb_prob if arb_prob is None else arb_prob
 
         # get slide object
         sl = self.slide_objects[slide_id]
@@ -966,6 +970,8 @@ def create_midog_atypical_dataloader(
         patch_size: int = 1280,
         num_samples: int = 1024,
         sampling_strategy: str = 'domain_based',
+        fg_prob: float = 0.5,
+        arb_prob: float = 0.25,
         workers: int = 8,
         world_size: int = 1,
         rank: int = -1
@@ -984,6 +990,8 @@ def create_midog_atypical_dataloader(
                 dataset=train_df, 
                 num_samples=num_samples, 
                 patch_size=patch_size,
+                fg_prob=fg_prob,
+                arb_prob=arb_prob,
                 sampling_strategy=sampling_strategy,
                 transforms=create_midog_transforms()
             )
@@ -994,6 +1002,8 @@ def create_midog_atypical_dataloader(
                 dataset=valid_df, 
                 num_samples=num_samples, 
                 patch_size=patch_size,
+                fg_prob=fg_prob,
+                arb_prob=arb_prob,
                 sampling_strategy=sampling_strategy,
             )
         else:

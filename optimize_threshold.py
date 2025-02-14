@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 import pprint
+import pickle 
 
 from tqdm import tqdm 
 from pathlib import Path
@@ -195,6 +196,8 @@ def main(args):
             minthres=args.min_thresh
         )
     else:
+
+        valid_dataset = valid_dataset.query('label >= 0')
 
         # optimize multiclass threshold
         bestThres, bestF1, allF1, allThres = optimize_multiclass_threshold(

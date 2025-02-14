@@ -110,8 +110,14 @@ def main(args):
         eval_dataset = dataset.query('split == @args.split')
     elif 'atypical' in args.dataset_file.lower():
         dataset = pd.read_csv(args.dataset_file)
+        # make midog annotations zero-indexed for YOLOv7
+        dataset['label'] = dataset['label'] - 1
         # filter eval samples and ignore imposter 
-        eval_dataset = dataset.query('split == @args.split & label > 0') # in our atypical dataset labels are 0:NMF, 1:MF, 2:MF
+        eval_dataset = dataset.query('split == @args.split & label >= 0') # in our atypical dataset labels are 0:NMF, 1:MF, 2:MF
+        eval_dataset['xmin'] = eval_dataset['x'] - 25
+        eval_dataset['xmax'] = eval_dataset['x'] + 25
+        eval_dataset['ymin'] = eval_dataset['y'] - 25
+        eval_dataset['ymax'] = eval_dataset['y'] + 25
     else:
         raise ValueError(f'Unsupported dataset file {args.dataset_file}')
     print('Done.')
