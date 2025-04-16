@@ -33,3 +33,5 @@ If you want to train your own model you need to download the inital weights for 
 [`yolov7_training.pt`](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7_training.pt) [`yolov7x_training.pt`](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7x_training.pt) [`yolov7-w6_training.pt`](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-w6_training.pt) [`yolov7-e6_training.pt`](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-e6_training.pt) [`yolov7-d6_training.pt`](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-d6_training.pt) [`yolov7-e6e_training.pt`](https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-e6e_training.pt)
 
 ## Citation
+
+J. Ammeling, J. Ganz, F. Wilm, K. Breininger and M. Aubreville, "Investigation of Class Separability within Object Detection Models in Histopathology," in IEEE Transactions on Medical Imaging, doi: [10.1109/TMI.2025.3560134](https://doi.org/10.1109/TMI.2025.3560134).
