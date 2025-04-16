@@ -34,4 +34,4 @@ If you want to train your own model you need to download the inital weights for 
 
 ## Citation
 
-J. Ammeling, J. Ganz, F. Wilm, K. Breininger and M. Aubreville, "Investigation of Class Separability within Object Detection Models in Histopathology," in IEEE Transactions on Medical Imaging, doi: [10.1109/TMI.2025.3560134](https://doi.org/10.1109/TMI.2025.3560134).
+J. Ammeling, J. Ganz, F. Wilm, K. Breininger and M. Aubreville, "Investigation of Class Separability within Object Detection Models in Histopathology," in IEEE Transactions on Medical Imaging. [![DOI:10.1109/TMI.2025.3560134](https://zenodo.org/badge/DOI/10.1109/TMI.2025.3560134.svg)](https://doi.org/10.1109/TMI.2025.3560134)
